@@ -53,7 +53,7 @@ cat << 'EOF'
 {
   "hookSpecificOutput": {
     "hookEventName": "SessionStart",
-    "additionalContext": "【Agent 启动】请立即执行启动序列（不要询问用户）：\n1. 检查 Dashboard 服务: curl -sf http://localhost:7890/api/health\n2. 如未运行: bash web/start-dashboard.sh\n3. 等待 2 秒后打开浏览器: open http://localhost:7890\n4. 读取 entities.yaml，通过 curl POST http://localhost:7890/api/server/init 初始化\n5. 读取 memory/*.md 中已有的实体状态，通过 curl POST http://localhost:7890/api/server/:alias/status 更新\n6. curl -X POST http://localhost:7890/api/claude/status -H 'Content-Type: application/json' -d '{\"status\":\"connected\"}'\n7. Plugin 巡检 — 检查各 plugin 状态，读取最新报告\n8. 启动后台轮询：bash scripts/dashboard-poll.sh 作为 run_in_background 的 Bash 任务（timeout 600000）\n9. 用一句话报告就绪状态\n\n【后台轮询机制】每次处理完 Dashboard 消息后，必须重新启动一个相同的后台轮询任务，形成循环。\n【plugin_report 消息】收到 plugin_report 类型消息时：读取摘要，有异常则深入分析，无异常则简报。"
+    "additionalContext": "【Agent 启动】请按 CLAUDE.md 启动序列自动执行，不要询问用户：\n1. 检查 Dashboard 服务: curl -sf http://localhost:7890/api/health，如未运行: bash web/start-dashboard.sh\n2. 打开浏览器: open http://localhost:7890\n3. 读取 entities.yaml → curl POST http://localhost:7890/api/server/init 初始化实体\n4. 读取 memory/*.md → curl POST /api/server/:alias/status 加载已知状态\n5. curl POST http://localhost:7890/api/claude/status -d '{\"status\":\"connected\"}'\n6. 如 CLAUDE.md 定义了 Team 模式 → 创建 Team + spawn Workers（参照 CLAUDE.md 中 Team 段落）\n7. 启动后台轮询: bash scripts/dashboard-poll.sh（run_in_background, timeout 600000）\n8. Plugin 巡检 — curl -sf http://localhost:7890/api/cron/status 检查各 plugin daemon 状态\n9. 报告就绪\n\n【轮询重启铁律】每次处理完 Dashboard 消息后，必须立即重新启动后台轮询，不重启 = Claude 变聋。\n【plugin_report 消息】收到 plugin_report 时：读取摘要 → 有异常则深入分析 → 如配置了通知则推送结果。"
   }
 }
 EOF

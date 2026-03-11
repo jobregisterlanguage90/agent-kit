@@ -2,7 +2,8 @@
 # Dashboard 消息轮询后台脚本
 # 每 3 秒检查消息队列，发现消息后合并输出并退出
 
-POLL_PID_FILE="/tmp/claude-dashboard-poll.pid"
+PROJECT_NAME=$(basename "${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}")
+POLL_PID_FILE="/tmp/claude-${PROJECT_NAME}-dashboard-poll.pid"
 DASHBOARD_PORT="${DASHBOARD_PORT:-7890}"
 
 if [ -f "$POLL_PID_FILE" ]; then kill $(cat "$POLL_PID_FILE") 2>/dev/null; fi

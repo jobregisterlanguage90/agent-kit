@@ -34,6 +34,15 @@ CONNECT_VIA="${CONNECT_VIA:-ssh}"
 read -p "Dashboard 端口 [7890]: " DASHBOARD_PORT
 DASHBOARD_PORT="${DASHBOARD_PORT:-7890}"
 
+read -p "Team 模式 Worker 数量 (0=不启用) [0]: " TEAM_SIZE
+TEAM_SIZE="${TEAM_SIZE:-0}"
+
+read -p "启用飞书通知? (y/n) [n]: " ENABLE_FEISHU
+ENABLE_FEISHU="${ENABLE_FEISHU:-n}"
+
+read -p "启用 Webhook 通知? (y/n) [n]: " ENABLE_WEBHOOK
+ENABLE_WEBHOOK="${ENABLE_WEBHOOK:-n}"
+
 read -p "目标目录 [$HOME/Documents/code/$PROJECT_NAME]: " TARGET_DIR
 TARGET_DIR="${TARGET_DIR:-$HOME/Documents/code/$PROJECT_NAME}"
 
@@ -44,6 +53,9 @@ echo "  Agent 角色: $AGENT_ROLE"
 echo "  实体类型: $ENTITY_TYPE ($ENTITY_LABEL)"
 echo "  连接方式: $CONNECT_VIA"
 echo "  Dashboard 端口: $DASHBOARD_PORT"
+echo "  Team 模式: ${TEAM_SIZE} Workers"
+echo "  飞书通知: $ENABLE_FEISHU"
+echo "  Webhook 通知: $ENABLE_WEBHOOK"
 echo "  目标目录: $TARGET_DIR"
 echo ""
 read -p "确认创建? (y/N): " CONFIRM
@@ -79,10 +91,65 @@ find "$TARGET_DIR" -name "*.tmpl" | while read tmpl; do
       -e "s|{{ENTITY_LABEL}}|$ENTITY_LABEL|g" \
       -e "s|{{CONNECT_VIA}}|$CONNECT_VIA|g" \
       -e "s|{{DASHBOARD_PORT}}|$DASHBOARD_PORT|g" \
+      -e "s|{{TEAM_SIZE}}|$TEAM_SIZE|g" \
       "$tmpl" > "$dest"
   rm "$tmpl"
   echo "  [生成] $(basename "$dest")"
 done
+
+# === Team 模式条件渲染 ===
+if [ "$TEAM_SIZE" = "0" ] || [ -z "$TEAM_SIZE" ]; then
+  # 删除 TEAM_MODE 段落
+  if [ -f "$TARGET_DIR/CLAUDE.md" ]; then
+    sed -i '' '/<!-- IF TEAM_MODE -->/,/<!-- ENDIF -->/d' "$TARGET_DIR/CLAUDE.md"
+    echo "  [跳过] Team 模式（未启用）"
+  fi
+else
+  # 保留段落，删除条件标记
+  if [ -f "$TARGET_DIR/CLAUDE.md" ]; then
+    sed -i '' '/<!-- IF TEAM_MODE -->/d;/<!-- ENDIF -->/d' "$TARGET_DIR/CLAUDE.md"
+    echo "  [启用] Team 模式（$TEAM_SIZE Workers）"
+  fi
+fi
+
+# === 可选 Plugin 处理 ===
+if [ "$ENABLE_FEISHU" != "y" ] && [ "$ENABLE_FEISHU" != "Y" ]; then
+  rm -rf "$TARGET_DIR/plugins/feishu-notify"
+  echo "  [跳过] 飞书通知 Plugin"
+else
+  chmod +x "$TARGET_DIR/plugins/feishu-notify/"*.sh
+  # 追加 .env.example 飞书变量
+  if [ -f "$TARGET_DIR/.env.example" ]; then
+    cat >> "$TARGET_DIR/.env.example" << 'FEISHU_EOF'
+
+# === 飞书通知（可选）===
+FEISHU_APP_ID=""
+FEISHU_APP_SECRET=""
+FEISHU_WEBHOOK_URL=""
+FEISHU_NOTIFY_USER_IDS=""
+FEISHU_BITABLE_APP_TOKEN=""
+FEISHU_EOF
+  fi
+  echo "  [启用] 飞书通知 Plugin"
+  echo "  提示: pip install -r plugins/feishu-notify/requirements.txt"
+fi
+
+if [ "$ENABLE_WEBHOOK" != "y" ] && [ "$ENABLE_WEBHOOK" != "Y" ]; then
+  rm -rf "$TARGET_DIR/plugins/webhook-notify"
+  echo "  [跳过] Webhook 通知 Plugin"
+else
+  chmod +x "$TARGET_DIR/plugins/webhook-notify/"*.sh
+  # 追加 .env.example Webhook 变量
+  if [ -f "$TARGET_DIR/.env.example" ]; then
+    cat >> "$TARGET_DIR/.env.example" << 'WEBHOOK_EOF'
+
+# === Webhook 通知（可选）===
+WEBHOOK_URL=""
+WEBHOOK_TYPE="feishu"    # feishu | slack | discord | custom
+WEBHOOK_EOF
+  fi
+  echo "  [启用] Webhook 通知 Plugin"
+fi
 
 # === 设置脚本权限 ===
 echo "  设置权限..."

@@ -97,9 +97,27 @@ Dashboard 浏览器 ──┤         ↑
 Plugin 守护进程 ───┘    ← /api/messages
 ```
 
+## 可选能力
+
+`create-agent.sh` 交互时可选启用：
+
+| 能力 | 说明 |
+|------|------|
+| **Team 模式** | Lead + N Worker 并行架构，适合多实体批量操作 |
+| **飞书通知** | Bot 长连接监听 + 消息回复 + 多维表格汇报 + IM 直发 |
+| **Webhook 通知** | 轻量推送（飞书群/Slack/Discord/自定义 HTTP） |
+
+## 内置 Plugin
+
+| Plugin | 类型 | 说明 |
+|--------|------|------|
+| `feishu-notify` | listener | 飞书 WebSocket 长连接 + API 全套 |
+| `webhook-notify` | utility | 通用 Webhook 推送（无 daemon） |
+
 ## 文档
 
 - [架构详解](docs/architecture.md)
 - [Skill 编写指南](docs/skills-guide.md)
 - [Plugin 编写指南](docs/plugins-guide.md)
 - [Dashboard API 参考](docs/dashboard-api.md)
+- [实践真知](docs/proven-patterns.md) — 已验证的模式与反模式

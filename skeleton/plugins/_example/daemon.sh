@@ -3,8 +3,9 @@
 # 用法: nohup bash plugins/example-monitor/daemon.sh [project_dir] &
 
 PROJECT_DIR="${1:-$(cd "$(dirname "$0")/../.." && pwd)}"
+PROJECT_NAME=$(basename "$PROJECT_DIR")
 PLUGIN_NAME="example-monitor"
-PID_FILE="/tmp/claude-${PLUGIN_NAME}.pid"
+PID_FILE="/tmp/claude-${PROJECT_NAME}-${PLUGIN_NAME}.pid"
 LOG_FILE="$PROJECT_DIR/data/reports/${PLUGIN_NAME}.log"
 INTERVAL=3600
 DASHBOARD_PORT="${DASHBOARD_PORT:-7890}"
@@ -46,6 +47,15 @@ while true; do
     -d "$(jq -n --arg text "$RESULT" --arg plugin "$PLUGIN_NAME" \
       '{type:"plugin_report", plugin:$plugin, text:$text}')" \
     >> "$LOG_FILE" 2>&1 || log "Dashboard unreachable, result logged only"
+
+  # === 推送外部通知（防止漏通知！）===
+  # 教训：daemon 只注入消息队列但不推送通知 = 没人知道结果
+  # 如果项目安装了通知 Plugin，在这里调用：
+  if [ -f "$PROJECT_DIR/plugins/webhook-notify/notify.sh" ]; then
+    bash "$PROJECT_DIR/plugins/webhook-notify/notify.sh" "$PLUGIN_NAME 报告" "$RESULT" || true
+  fi
+  # 如果有飞书 report 需求（取消注释并修改参数）：
+  # bash "$PROJECT_DIR/plugins/feishu-notify/report.sh" <table_key> <fields...> || true
 
   log "Sleeping ${INTERVAL}s until next check"
 done

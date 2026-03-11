@@ -115,3 +115,78 @@ Express + WebSocket 服务器，提供：
 1. 创建 `plugins/my-plugin/` 目录
 2. 编写 PLUGIN.md + daemon.sh + start.sh
 3. 下次 session 自动启动
+
+## 内置 Plugin 架构
+
+### feishu-notify（飞书深度集成）
+
+```
+飞书用户 → WebSocket → bot.py → POST /api/messages → 消息队列
+                                                          ↓
+                                        Claude 轮询 → 处理 → reply.sh 回复
+                                                    → report.sh 写入多维表格
+                                                    → send_im_direct 直发 IM
+```
+
+组件：
+- `bot.py` — WebSocket 长连接，从 entities.yaml 动态加载别名
+- `start.sh` / `stop.sh` — nohup daemon 管理（PID 含项目名）
+- `reply.sh` — 回复飞书消息（文本/卡片）
+- `report.sh` — 多维表格写入 + IM 直发（通用子命令架构）
+- `setup-bitable.py` — 一次性建表，自动写入 .env
+
+### webhook-notify（轻量 Webhook）
+
+```
+Skill/Daemon 完成 → bash notify.sh "标题" "内容" → 自动检测平台 → POST Webhook
+```
+
+支持：飞书群 Bot、Slack、Discord、自定义 HTTP。
+无 daemon，utility 类型，按需调用。
+
+### 通知闭环原则
+
+daemon 生成报告后**必须**走两条通道：
+1. `POST /api/messages` — Dashboard 消息队列（Claude 轮询处理）
+2. 通知 Plugin — 飞书/Webhook 推送（人直接看到）
+
+> 教训：某 daemon 跑了 5 天报告正常生成，但通知完全没推送 —
+> 因为只做了消息队列注入，没调用通知 Plugin。
+
+### Skill 辅助函数
+
+`scripts/skill-helpers.sh` 提供标准 Dashboard API 封装：
+
+```bash
+source scripts/skill-helpers.sh
+wId=$(skill_spawn "check" "entity-1" "检查操作")
+skill_term "$wId" "command" "执行的命令"
+skill_term "$wId" "output" "命令输出"
+skill_done "$wId" "success" "操作完成"
+skill_notify "操作完成" "实体 entity-1 状态正常"
+```
+
+## Team 模式架构
+
+可选的 Lead + Worker 并行架构：
+
+```
+轮询发现消息 → Lead 解析 → SendMessage 分发 → Worker 独立执行
+                                   ↓                    ↓
+                          立即重启轮询          完成后回报 Lead
+```
+
+规则：
+- Lead **不执行** Skill，只做调度和汇总
+- 同一实体分配给同一 Worker（memory 安全）
+- Team 跟随会话生命周期，新会话自动重建
+
+## Context Expiry 恢复
+
+| 组件 | 影响 | 恢复机制 |
+|------|------|---------|
+| Plugin daemon | 不受影响（nohup） | session-start.sh 自动检活 |
+| Dashboard | 不受影响（Express） | 持续运行 |
+| 后台轮询 | 丢失 | 启动序列自动重启 |
+| Team | 丢失 | 启动序列自动重建 |
+| 消息队列 | 内存队列可能丢失 | 报告持久化到 data/ |

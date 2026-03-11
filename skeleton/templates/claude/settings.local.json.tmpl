@@ -2,8 +2,19 @@
   "permissions": {
     "allow": [
       "Bash(bash web/start-dashboard.sh)",
-      "Bash(curl -s http://localhost:{{DASHBOARD_PORT}}/api/messages)",
-      "Bash(bash scripts/dashboard-poll.sh)"
+      "Bash(bash web/stop-dashboard.sh)",
+      "Bash(open http://localhost:{{DASHBOARD_PORT}})",
+      "Bash(curl *localhost:{{DASHBOARD_PORT}}/api/*)",
+      "Bash(bash scripts/dashboard-poll.sh)",
+      "Bash(bash plugins/*/start.sh *)",
+      "Bash(bash plugins/*/stop.sh *)",
+      "Bash(bash plugins/*/reply.sh *)",
+      "Bash(bash plugins/*/notify.sh *)",
+      "Bash(bash plugins/*/report.sh *)",
+      "Bash(bash setup.sh)",
+      "Bash(cat entities.yaml)",
+      "Bash(cat memory/*.md)",
+      "Bash(jq * entities.yaml)"
     ]
   }
 }

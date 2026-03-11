@@ -22,8 +22,65 @@ SessionStart hook 检测到 `.env` 不存在时，跳过正常启动，执行引
 3. **加载已知状态** — 读取 `memory/*.md` 中的指标，通过 `curl POST /api/server/:alias/status` 更新
 4. **设置连接状态** — `curl -s -X POST http://localhost:{{DASHBOARD_PORT}}/api/claude/status -d '{"status":"connected"}'`
 5. **启动后台轮询** — `bash scripts/dashboard-poll.sh`，run_in_background（timeout 600000）
-6. **Plugin 巡检** — 检查各 plugin daemon 状态，读取最新报告
-7. **报告就绪** — 一句话告知用户 Dashboard 已就绪，等待指令
+<!-- IF TEAM_MODE -->
+6. **创建团队** — TeamCreate "{{PROJECT_NAME}}-team"，并行 spawn {{TEAM_SIZE}} 个 Worker（见下方 Team 模式）
+<!-- ENDIF -->
+7. **Plugin 巡检** — `curl -sf http://localhost:{{DASHBOARD_PORT}}/api/cron/status` 检查各 plugin daemon 状态
+8. **报告就绪** — 一句话告知用户 Dashboard 已就绪，等待指令
+
+<!-- IF TEAM_MODE -->
+### Team 模式（Lead + Worker 架构）
+
+启动序列创建 Team 后，**Lead 只做轮询和调度，不执行任何 Skill**。所有任务由 Worker 执行。
+
+```
+轮询发现消息 → Lead 解析 → SendMessage 分发给 Worker（< 1秒）→ 立即重启轮询
+                                    ↓
+                        Worker 独立执行（不阻塞 Lead）
+                                    ↓
+                        Worker 完成 → SendMessage 回报 Lead → Lead 汇总给用户
+```
+
+**调度规则**：
+- 按消息顺序分配给空闲 Worker
+- 同一实体的操作分配给同一 Worker（memory 文件安全）
+- 分配完毕后**立即重启轮询**（不等 Worker 完成）
+- 全部 Worker 都忙时，等待最先完成的
+- 用户终端直接输入也分发给 Worker
+
+**Worker Prompt 模板**（spawn 时传入）：
+
+```
+你是 {{PROJECT_NAME}} Worker Agent，属于 {{PROJECT_NAME}}-team。
+
+核心职责：
+1. 收到 Team Lead 分配的任务后立即执行
+2. 通过配置的连接方式操作目标实体
+3. 通过 curl 更新 Dashboard API（localhost:{{DASHBOARD_PORT}}）
+4. 完成后用 TaskUpdate 标记任务完成
+
+执行步骤（每个实体）：
+1. 读取 memory/{alias}.md 了解实体环境
+2. 如 memory 不存在，先基础探测
+3. curl POST /api/worker/spawn 派遣 Dashboard 小人
+4. 执行操作，同时 curl /api/worker/:id/term 更新终端
+5. curl POST /api/server/:alias/status 更新实体指标
+6. curl POST /api/worker/:id/done 标记完成
+7. 更新 memory/{alias}.md 操作历史
+
+Dashboard API 速查：
+- POST /api/worker/spawn → {type,target,label} → 返回 {workerId}
+- POST /api/worker/:id/say → {text} 气泡文字
+- POST /api/worker/:id/term → {type:"command/output/error",text}
+- POST /api/worker/:id/done → {result:"success/error"}
+- POST /api/server/:alias/status → {status,...}
+
+安全规则：
+- 删除/停服务前必须向 Team Lead 确认（SendMessage）
+- 配置修改前先备份
+- 只修改你负责的实体的 memory 文件
+```
+<!-- ENDIF -->
 
 ### 后台轮询机制（实时联动）
 
@@ -33,11 +90,15 @@ SessionStart hook 检测到 `.env` 不存在时，跳过正常启动，执行引
 轮询(每3秒) → 发现消息 → 退出通知Claude → 处理消息 → 重启轮询 → 循环
 ```
 
-**关键规则**：
-- 每次处理完 Dashboard 消息后，**必须立即重新启动**一个相同的后台轮询任务
-- 轮询脚本通过 PID 文件防止重复实例
+### 轮询重启铁律（Critical）
 
-### 持续运维循环
+每次处理完 Dashboard 消息后，**必须立即重新启动**后台轮询：
+```bash
+bash scripts/dashboard-poll.sh  # run_in_background, timeout 600000
+```
+不重启 = Claude 变聋，无法感知后续 Dashboard/Plugin 消息。这是最常犯的错误。
+
+### 持续工作循环
 
 ```
 轮询发现消息 → 解析消息类型 → 执行对应 Skill → 更新 Dashboard → 重启轮询
@@ -48,6 +109,18 @@ SessionStart hook 检测到 `.env` 不存在时，跳过正常启动，执行引
 用户通过两个通道下达指令，同等优先级：
 - **终端** — 直接打字输入
 - **Dashboard** — 点击按钮/输入框
+
+### Context Expiry 恢复
+
+Claude 会话可能因 context 限制自动结束。各组件恢复机制：
+- **Plugin 守护进程**：独立进程（nohup），不受影响，session-start.sh 自动检活
+- **Dashboard 服务**：独立 Express 进程，不受影响
+- **轮询**：依赖 run_in_background，新会话启动序列自动重启
+<!-- IF TEAM_MODE -->
+- **Team**：跟随会话生命周期，新会话自动重建
+<!-- ENDIF -->
+- **消息队列**：Plugin 报告应持久化到 data/reports/，不只依赖内存队列
+- **关键**：daemon 自动循环，不需要手动重启
 
 ---
 
@@ -192,11 +265,36 @@ curl -s -X POST http://localhost:{{DASHBOARD_PORT}}/api/worker/$wId/done \
 ## Plugin 消息处理
 
 收到 `plugin_report` 消息时：
-- 读取摘要
-- 有异常则深入分析（调用相关 Skill）
-- 无异常则简报
+1. 读取摘要文本
+2. 如有 `reportFile` → 读取完整报告深入分析
+3. 有异常 → 调用相关 Skill 处理 + 通知用户
+4. 无异常 → 一句话简报
+5. 如配置了通知（飞书/Webhook）→ 推送结果摘要
 
-Plugin 守护进程独立于 Claude 进程树，会话结束不影响。
+Plugin 守护进程独立于 Claude 进程树，会话结束不影响。**不需要手动重启 daemon**（自动循环）。
+
+---
+
+## 通知集成（可选）
+
+如果项目安装了通知 Plugin（feishu-notify / webhook-notify）：
+- 收到飞书/外部消息 → 同 `text` 类型处理
+- 操作完成后 → 调用通知 Plugin 推送结果
+- 通知内容简洁：1-3 句话，≤200 字
+
+---
+
+## 功能完成自检清单
+
+每次完成新 Plugin 或 Skill 开发后，**必须验证**：
+1. **消息通道**：daemon 报告是否成功注入消息队列？（curl POST 后检查返回值）
+2. **通知推送**：如配置了飞书/Webhook，是否正确推送？（检查通知是否收到）
+3. **Dashboard 展示**：Worker spawn/term/done 是否正确显示？（打开 Dashboard 验证）
+4. **Memory 更新**：操作后 memory 文件是否正确追加历史？
+5. **PID 管理**：daemon 启停是否正确管理 PID 文件？（连续 start 两次不应有重复进程）
+6. **环境缺失兜底**：.env 变量缺失时是否静默跳过而非报错？
+
+> 反面案例：某 daemon 跑了 5 天报告正常生成，但通知完全没推送 — 因为代码写完后没验证通知通道。
 
 ---
 

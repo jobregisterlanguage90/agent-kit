@@ -45,29 +45,42 @@ Plugin 守护进程 ───┘    ← GET /api/messages
 - 消息队列实现双向通信 — Dashboard → Claude（用户操作）、Plugin → Claude（定时报告）
 - 后台轮询是 Claude 感知外部事件的核心机制，每次处理完必须立即重启
 
-### Team 模式（可选）
-- 生成的 CLAUDE.md.tmpl 默认单人模式
-- 可手动扩展为 Lead + N Worker 架构（参考 server-maintenance 项目）
+### Team 模式（可选，create-agent.sh 支持）
+- `create-agent.sh` 交互时可选 Team Worker 数量
+- CLAUDE.md.tmpl 中 `<!-- IF TEAM_MODE -->` 条件段自动渲染
 - Lead 只做轮询调度，Worker 执行所有实际操作
 - 同一实体的操作分配给同一 Worker（memory 文件并发安全）
+
+### 内置 Plugin
+- **feishu-notify**：飞书深度集成（Bot 长连接 + 消息回复 + 多维表格 + IM 直发）
+- **webhook-notify**：轻量 Webhook（飞书群/Slack/Discord/自定义）
+- `create-agent.sh` 交互时可选启用，未启用的自动清理
+
+### 实践真知
+- `docs/proven-patterns.md` 记录从生产项目验证的模式与反模式
+- CLAUDE.md.tmpl 内置功能自检清单，每次开发后验证通道完整性
+- daemon.sh 模板强制通知闭环（消息队列 + 外部推送双通道）
 
 ## 文件结构说明
 
 ```
 claude-agent-kit/
 ├── CLAUDE.md              ← 你正在读的这个（框架维护者的指南）
-├── create-agent.sh        ← 交互式脚手架
+├── create-agent.sh        ← 交互式脚手架（含可选能力选择）
 ├── skeleton/              ← 项目模板（create-agent.sh 复制 + 变量替换）
-│   ├── CLAUDE.md.tmpl     ← Agent 灵魂模板（{{VAR}} 占位符）
+│   ├── CLAUDE.md.tmpl     ← Agent 灵魂模板（{{VAR}} + 条件段）
 │   ├── entities.yaml.tmpl ← 实体清单模板
 │   ├── setup.sh           ← 生成项目的安装脚本
 │   ├── web/               ← Dashboard 通用版
-│   ├── skills/_example/   ← Skill 编写范例
-│   ├── plugins/_example/  ← Plugin 编写范例
-│   ├── scripts/           ← 通用脚本（轮询等）
+│   ├── skills/_example/   ← Skill 编写范例（完整生命周期）
+│   ├── plugins/
+│   │   ├── _example/      ← Plugin 编写范例（含通知闭环）
+│   │   ├── feishu-notify/ ← 飞书深度集成（可选）
+│   │   └── webhook-notify/← 轻量 Webhook（可选）
+│   ├── scripts/           ← 通用脚本（轮询 + Skill helpers）
 │   ├── memory/            ← 记忆模板
 │   └── templates/claude/  ← Hooks + settings 模板
-└── docs/                  ← 框架文档
+└── docs/                  ← 框架文档 + 实践真知
 ```
 
 ## 维护原则
@@ -79,9 +92,10 @@ claude-agent-kit/
 
 ### 演进方向
 - **UI 主题化**：当前只有等距像素风，未来可做多套主题供选择
-- **Team 模式模板化**：将 Lead+Worker 架构作为 CLAUDE.md.tmpl 的可选段落
-- **Plugin 市场**：常用 Plugin（飞书通知、定时报告、Webhook 监听）提取为可复用模块
-- **create-agent.sh 增强**：支持选择主题、Team 规模、预装 Plugin 等
+- ~~Team 模式模板化~~：✅ 已完成（CLAUDE.md.tmpl 条件段 + create-agent.sh 交互）
+- ~~Plugin 市场~~：✅ 已内置 feishu-notify + webhook-notify
+- ~~create-agent.sh 增强~~：✅ 已支持 Team/飞书/Webhook 选择
+- **更多内置 Plugin**：定时报告生成、健康监控告警等
 
 ## 从已有项目提炼到 kit 的流程
 

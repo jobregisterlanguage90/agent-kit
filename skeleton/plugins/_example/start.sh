@@ -3,8 +3,9 @@
 # 由 session-start.sh hook 自动调用
 
 PROJECT_DIR="${1:-$(cd "$(dirname "$0")/../.." && pwd)}"
+PROJECT_NAME=$(basename "$PROJECT_DIR")
 PLUGIN_NAME="example-monitor"
-PID_FILE="/tmp/claude-${PLUGIN_NAME}.pid"
+PID_FILE="/tmp/claude-${PROJECT_NAME}-${PLUGIN_NAME}.pid"
 
 # 检查依赖环境变量（缺失则静默跳过）
 source "$PROJECT_DIR/.env" 2>/dev/null

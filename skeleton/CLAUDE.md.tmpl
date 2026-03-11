@@ -21,14 +21,14 @@ SessionStart hook 检测到 `.env` 不存在时，跳过正常启动，执行引
 2. **初始化实体** — 读取 `entities.yaml`，通过 `curl -s -X POST http://localhost:{{DASHBOARD_PORT}}/api/server/init` 初始化
 3. **加载已知状态** — 读取 `memory/*.md` 中的指标，通过 `curl POST /api/server/:alias/status` 更新
 4. **设置连接状态** — `curl -s -X POST http://localhost:{{DASHBOARD_PORT}}/api/claude/status -d '{"status":"connected"}'`
-5. **启动后台轮询** — `bash scripts/dashboard-poll.sh`，run_in_background（timeout 600000）
-<!-- IF TEAM_MODE -->
-6. **创建团队** — TeamCreate "{{PROJECT_NAME}}-team"，并行 spawn {{TEAM_SIZE}} 个 Worker（见下方 Team 模式）
-<!-- ENDIF -->
+5. **创建团队** —
+   a. `TeamCreate "{{PROJECT_NAME}}-team"`
+   b. 并行 spawn {{TEAM_SIZE}} 个 Worker（单条消息发 {{TEAM_SIZE}} 个 Task tool 调用），见下方 Worker Prompt 模板
+   c. 等待所有 Worker 启动完成
+6. **启动后台轮询** — `bash scripts/dashboard-poll.sh`，run_in_background（timeout 600000）
 7. **Plugin 巡检** — `curl -sf http://localhost:{{DASHBOARD_PORT}}/api/cron/status` 检查各 plugin daemon 状态
-8. **报告就绪** — 一句话告知用户 Dashboard 已就绪，等待指令
+8. **报告就绪** — 一句话告知用户 Dashboard 已就绪，Team 已创建，等待指令
 
-<!-- IF TEAM_MODE -->
 ### Team 模式（Lead + Worker 架构）
 
 启动序列创建 Team 后，**Lead 只做轮询和调度，不执行任何 Skill**。所有任务由 Worker 执行。
@@ -47,6 +47,11 @@ SessionStart hook 检测到 `.env` 不存在时，跳过正常启动，执行引
 - 分配完毕后**立即重启轮询**（不等 Worker 完成）
 - 全部 Worker 都忙时，等待最先完成的
 - 用户终端直接输入也分发给 Worker
+
+**Team 生命周期**：
+- 会话启动时创建，跟随会话生命周期
+- Context expiry 后新会话自动重建 Team
+- 不需要手动管理
 
 **Worker Prompt 模板**（spawn 时传入）：
 
@@ -80,7 +85,6 @@ Dashboard API 速查：
 - 配置修改前先备份
 - 只修改你负责的实体的 memory 文件
 ```
-<!-- ENDIF -->
 
 ### 后台轮询机制（实时联动）
 
@@ -98,17 +102,41 @@ bash scripts/dashboard-poll.sh  # run_in_background, timeout 600000
 ```
 不重启 = Claude 变聋，无法感知后续 Dashboard/Plugin 消息。这是最常犯的错误。
 
-### 持续工作循环
+### 持续工作循环（Lead 调度模式）
+
+Lead **只做轮询和调度，不执行任何 Skill**。所有任务由 Worker 执行。
 
 ```
-轮询发现消息 → 解析消息类型 → 执行对应 Skill → 更新 Dashboard → 重启轮询
+轮询发现消息 → Lead 解析 → SendMessage 分发给 Worker（< 1秒）→ 立即重启轮询
+                                    ↓
+                        Worker 独立执行（不阻塞 Lead）
+                                    ↓
+                        Worker 完成 → SendMessage 回报 Lead → Lead 汇总给用户
 ```
+
+**调度流程**：
+1. 后台轮询发现消息 → 唤醒 Lead
+2. Lead 解析每条消息
+3. Lead 通过 SendMessage 分配给空闲 Worker
+4. 分配完毕后**立即重启轮询**（不等 Worker 完成）
+5. Worker 完成后 SendMessage 回报 Lead
+6. Lead 收到回报后简要汇总给用户
+
+**用户终端直接输入也分发给 Worker**：
+- Lead 解析用户意图 → SendMessage 给空闲 Worker
+- Lead 等待 Worker 回报后汇总展示
 
 ### 双通道交互
 
 用户通过两个通道下达指令，同等优先级：
 - **终端** — 直接打字输入
-- **Dashboard** — 点击按钮/输入框
+- **Dashboard** — 点击按钮/输入框（后台轮询自动检测，几秒内响应）
+
+### 取消操作
+
+Dashboard 上每个正在工作的 Worker 旁边有取消按钮。用户点击后：
+- `cancel_task` 消息进入队列，Claude 收到后安全中断当前操作
+- 只读操作（检查/日志）可直接中断；写操作（部署/配置）需判断当前步骤是否可安全中断
 
 ### Context Expiry 恢复
 
@@ -116,9 +144,7 @@ Claude 会话可能因 context 限制自动结束。各组件恢复机制：
 - **Plugin 守护进程**：独立进程（nohup），不受影响，session-start.sh 自动检活
 - **Dashboard 服务**：独立 Express 进程，不受影响
 - **轮询**：依赖 run_in_background，新会话启动序列自动重启
-<!-- IF TEAM_MODE -->
 - **Team**：跟随会话生命周期，新会话自动重建
-<!-- ENDIF -->
 - **消息队列**：Plugin 报告应持久化到 data/reports/，不只依赖内存队列
 - **关键**：daemon 自动循环，不需要手动重启
 

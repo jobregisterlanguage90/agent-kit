@@ -34,8 +34,8 @@ CONNECT_VIA="${CONNECT_VIA:-ssh}"
 read -p "Dashboard 端口 [7890]: " DASHBOARD_PORT
 DASHBOARD_PORT="${DASHBOARD_PORT:-7890}"
 
-read -p "Team 模式 Worker 数量 (0=不启用) [0]: " TEAM_SIZE
-TEAM_SIZE="${TEAM_SIZE:-0}"
+read -p "Team Worker 数量 [4]: " TEAM_SIZE
+TEAM_SIZE="${TEAM_SIZE:-4}"
 
 read -p "启用飞书通知? (y/n) [n]: " ENABLE_FEISHU
 ENABLE_FEISHU="${ENABLE_FEISHU:-n}"
@@ -97,20 +97,7 @@ find "$TARGET_DIR" -name "*.tmpl" | while read tmpl; do
   echo "  [生成] $(basename "$dest")"
 done
 
-# === Team 模式条件渲染 ===
-if [ "$TEAM_SIZE" = "0" ] || [ -z "$TEAM_SIZE" ]; then
-  # 删除 TEAM_MODE 段落
-  if [ -f "$TARGET_DIR/CLAUDE.md" ]; then
-    sed -i '' '/<!-- IF TEAM_MODE -->/,/<!-- ENDIF -->/d' "$TARGET_DIR/CLAUDE.md"
-    echo "  [跳过] Team 模式（未启用）"
-  fi
-else
-  # 保留段落，删除条件标记
-  if [ -f "$TARGET_DIR/CLAUDE.md" ]; then
-    sed -i '' '/<!-- IF TEAM_MODE -->/d;/<!-- ENDIF -->/d' "$TARGET_DIR/CLAUDE.md"
-    echo "  [启用] Team 模式（$TEAM_SIZE Workers）"
-  fi
-fi
+echo "  [启用] Team 模式（$TEAM_SIZE Workers）"
 
 # === 可选 Plugin 处理 ===
 if [ "$ENABLE_FEISHU" != "y" ] && [ "$ENABLE_FEISHU" != "Y" ]; then

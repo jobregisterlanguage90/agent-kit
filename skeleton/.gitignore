@@ -1,0 +1,23 @@
+# 环境变量（敏感信息）
+.env
+
+# 运行时数据
+data/logs/
+data/snapshots/
+data/reports/
+data/*.log
+
+# Dashboard
+web/node_modules/
+web/.dashboard.pid
+web/dashboard.log
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# PID files
+/tmp/claude-*.pid

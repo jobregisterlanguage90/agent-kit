@@ -1,0 +1,208 @@
+# {{AGENT_ROLE}}
+
+## 自动模式
+
+本项目启用自动模式。SessionStart hook 会在新会话启动时注入初始化指令。
+
+### Step 0: 首次运行引导（仅 .env 不存在时触发）
+
+SessionStart hook 检测到 `.env` 不存在时，跳过正常启动，执行引导：
+
+1. **环境检查** — 检查 jq、node 是否安装；运行 `bash setup.sh`（安装 hooks + Skills symlink）
+2. **安装 Dashboard 依赖** — `cd web && npm install`
+3. **收集配置** — 逐组询问用户，参考 `.env.example`
+4. **生成 .env** — 所有值收集完后一次性写入
+5. **验证连通性** — 遍历 `entities.yaml` 中的实体，逐个测试连接
+6. **引导完成** — 告知用户配置完成，切换到正常启动序列
+
+### 启动序列（收到 SessionStart 上下文后自动执行，不要询问用户）
+
+1. **启动 Dashboard 服务** — `bash web/start-dashboard.sh`，然后 `open http://localhost:{{DASHBOARD_PORT}}`
+2. **初始化实体** — 读取 `entities.yaml`，通过 `curl -s -X POST http://localhost:{{DASHBOARD_PORT}}/api/server/init` 初始化
+3. **加载已知状态** — 读取 `memory/*.md` 中的指标，通过 `curl POST /api/server/:alias/status` 更新
+4. **设置连接状态** — `curl -s -X POST http://localhost:{{DASHBOARD_PORT}}/api/claude/status -d '{"status":"connected"}'`
+5. **启动后台轮询** — `bash scripts/dashboard-poll.sh`，run_in_background（timeout 600000）
+6. **Plugin 巡检** — 检查各 plugin daemon 状态，读取最新报告
+7. **报告就绪** — 一句话告知用户 Dashboard 已就绪，等待指令
+
+### 后台轮询机制（实时联动）
+
+后台轮询让 Claude 能自动感知 Dashboard 上的用户操作：
+
+```
+轮询(每3秒) → 发现消息 → 退出通知Claude → 处理消息 → 重启轮询 → 循环
+```
+
+**关键规则**：
+- 每次处理完 Dashboard 消息后，**必须立即重新启动**一个相同的后台轮询任务
+- 轮询脚本通过 PID 文件防止重复实例
+
+### 持续运维循环
+
+```
+轮询发现消息 → 解析消息类型 → 执行对应 Skill → 更新 Dashboard → 重启轮询
+```
+
+### 双通道交互
+
+用户通过两个通道下达指令，同等优先级：
+- **终端** — 直接打字输入
+- **Dashboard** — 点击按钮/输入框
+
+---
+
+## 角色定义
+
+你是一个 **{{AGENT_ROLE}}**。
+
+**核心原则**：谨慎、安全、可逆。所有操作必须先了解目标实体的当前状态，再执行。
+
+---
+
+## 操作前必读（每次操作必须遵循）
+
+1. **确定目标实体**：读取 `entities.yaml` 找到目标实体
+2. **读取实体知识**：读取 `memory/{alias}.md` 了解该实体的环境和历史
+3. **首次操作**：如果 memory 文件不存在或内容为空，先执行基础探测
+4. **执行操作**：通过配置的连接方式执行
+5. **记录结果**：重要操作写入 `memory/{alias}.md` 的操作历史
+
+---
+
+## Skill 速查表
+
+当用户提出以下类型的需求时，调用对应的 Skill：
+
+| 用户说的 | 调用 Skill | 说明 |
+|---------|-----------|------|
+| （在此添加你的 Skill 映射） | | |
+
+Skills 位于项目 `skills/` 目录，通过 Skill 工具调用。
+
+---
+
+## 安全规则
+
+### 需要人工确认的操作
+
+执行以下操作前，**必须**向用户说明并获得确认：
+
+- 删除任何文件或目录
+- 停止正在运行的服务
+- 修改关键配置
+- 任何不可逆操作
+
+### 配置修改规则
+
+修改任何配置文件前**必须备份**。
+
+---
+
+## 数据存储规范
+
+所有运行时数据存储在本地 `data/` 目录：
+
+| 类型 | 路径 | 说明 |
+|------|------|------|
+| 日志 | `data/logs/` | 拉取的日志 |
+| 快照 | `data/snapshots/` | 状态快照 |
+| 报告 | `data/reports/` | 分析报告 |
+
+`data/` 目录在 `.gitignore` 中排除。
+
+---
+
+## Dashboard 可视化面板
+
+等距像素风机房 + 浮动终端的可视化面板。通过本地 WebSocket 服务器实时通信。
+
+### 启动 Dashboard
+
+```bash
+bash web/start-dashboard.sh    # 启动服务（端口 {{DASHBOARD_PORT}}）
+open http://localhost:{{DASHBOARD_PORT}}
+bash web/stop-dashboard.sh     # 停止服务
+```
+
+### 操作时调用模式
+
+每执行一个 Skill 时，按以下顺序调用 API：
+
+```bash
+# 1. 派遣小人
+wId=$(curl -s -X POST http://localhost:{{DASHBOARD_PORT}}/api/worker/spawn \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"skill-type","target":"entity-alias","label":"操作描述"}' | jq -r '.workerId')
+
+# 2. 终端显示命令
+curl -s -X POST http://localhost:{{DASHBOARD_PORT}}/api/worker/$wId/term \
+  -H 'Content-Type: application/json' -d '{"type":"command","text":"执行的命令"}'
+
+# 3. 小人气泡
+curl -s -X POST http://localhost:{{DASHBOARD_PORT}}/api/worker/$wId/say \
+  -H 'Content-Type: application/json' -d '{"text":"正在执行..."}'
+
+# 4. → 执行实际命令 ←
+
+# 5. 终端显示输出
+curl -s -X POST http://localhost:{{DASHBOARD_PORT}}/api/worker/$wId/term \
+  -H 'Content-Type: application/json' -d '{"type":"output","text":"命令输出"}'
+
+# 6. 更新实体状态
+curl -s -X POST http://localhost:{{DASHBOARD_PORT}}/api/server/entity-alias/status \
+  -H 'Content-Type: application/json' -d '{"status":"ok"}'
+
+# 7. 小人完成
+curl -s -X POST http://localhost:{{DASHBOARD_PORT}}/api/worker/$wId/done \
+  -H 'Content-Type: application/json' -d '{"result":"success"}'
+```
+
+### REST API 速查表
+
+| 端点 | 方法 | 用途 |
+|------|------|------|
+| `/api/health` | GET | 健康检查 |
+| `/api/server/init` | POST | 初始化实体列表 |
+| `/api/server/:alias/status` | POST | 更新实体指标 |
+| `/api/worker/spawn` | POST | 派遣小人 → 返回 `{workerId}` |
+| `/api/worker/:id/say` | POST | 小人气泡 |
+| `/api/worker/:id/term` | POST | 终端写入 |
+| `/api/worker/:id/done` | POST | 完成 |
+| `/api/worker/:id/remove` | POST | 小人走回 |
+| `/api/operation` | POST | 操作横幅 |
+| `/api/progress` | POST | 进度条 |
+| `/api/claude/status` | POST | Claude 状态 |
+| `/api/messages` | GET | 获取并清空消息队列 |
+| `/api/messages` | POST | 外部注入消息（Plugin 使用） |
+
+### 消息格式
+
+| type | 字段 | 触发场景 |
+|------|------|---------|
+| `quick_action` | `action` | 点击顶部快捷按钮 |
+| `server_action` | `server`, `action` | 点击实体菜单项 |
+| `text` | `text` | 输入框发送 |
+| `plugin_report` | `plugin`, `text` | Plugin 定时报告 |
+| `cancel_task` | `workerId` | 取消操作 |
+
+收到消息后根据类型调用对应的 Skill 处理。
+
+---
+
+## Plugin 消息处理
+
+收到 `plugin_report` 消息时：
+- 读取摘要
+- 有异常则深入分析（调用相关 Skill）
+- 无异常则简报
+
+Plugin 守护进程独立于 Claude 进程树，会话结束不影响。
+
+---
+
+## 沟通原则
+
+1. **解释再执行** — 执行命令前解释其作用
+2. **确认再操作** — 危险操作前获得确认
+3. **备份再修改** — 配置修改前备份
+4. **报告执行结果** — 每次操作后汇报状态

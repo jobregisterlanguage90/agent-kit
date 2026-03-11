@@ -1,0 +1,2696 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pixel Ops Dashboard v3</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0e17; color: #e2e8f0; font-family: 'Courier New', monospace; overflow: hidden; height: 100vh; }
+
+  /* ─── Top Bar ─── */
+  #top-bar {
+    position: fixed; top: 0; left: 0; right: 0; height: 36px; z-index: 100;
+    background: rgba(10, 14, 23, 0.92); border-bottom: 1px solid #1e293b;
+    display: flex; align-items: center; padding: 0 16px; gap: 16px;
+    backdrop-filter: blur(8px);
+  }
+  #top-bar .logo { font-size: 14px; font-weight: bold; color: #7dd3fc; white-space: nowrap; }
+  #top-bar .operation-banner {
+    flex: 1; font-size: 12px; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #top-bar .operation-banner.active { color: #fbbf24; }
+  .status-group { display: flex; align-items: center; gap: 12px; font-size: 11px; color: #64748b; white-space: nowrap; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .status-dot.connected { background: #10b981; box-shadow: 0 0 6px #10b981; }
+  .status-dot.working { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; animation: pulse 1s infinite; }
+  .status-dot.disconnected { background: #ef4444; }
+  .stat-badge { padding: 2px 6px; border-radius: 3px; font-size: 10px; }
+  .stat-badge.ok { background: #064e3b; color: #6ee7b7; }
+  .stat-badge.warn { background: #78350f; color: #fcd34d; }
+  .stat-badge.crit { background: #7f1d1d; color: #fca5a5; }
+  .stat-badge.total { background: #1e293b; color: #94a3b8; }
+
+  /* ─── Progress Bar ─── */
+  #progress-bar {
+    position: fixed; top: 36px; left: 0; right: 0; height: 3px; z-index: 99;
+    background: transparent; display: none;
+  }
+  #progress-bar .fill { height: 100%; background: linear-gradient(90deg, #3b82f6, #7dd3fc); transition: width 0.3s; }
+  #progress-bar.active { display: block; }
+
+  /* ─── Canvas ─── */
+  #scene { position: fixed; top: 36px; left: 0; right: 0; height: calc(100vh - 36px - 52px); image-rendering: pixelated; cursor: default; transition: right 0.3s ease; }
+  body.history-open #scene { right: 280px; }
+
+  /* ─── Bottom Bar ─── */
+  #bottom-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; height: 52px; z-index: 100;
+    background: rgba(10, 14, 23, 0.95); border-top: 1px solid #1e293b;
+    display: flex; align-items: center; padding: 0 12px; gap: 8px;
+    backdrop-filter: blur(8px);
+  }
+  .action-btn {
+    padding: 6px 14px; font-size: 11px; font-family: inherit;
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    border-radius: 4px; cursor: pointer; white-space: nowrap; transition: all 0.15s;
+  }
+  .action-btn:hover { background: #334155; color: #e2e8f0; border-color: #475569; }
+  .action-btn:active { background: #475569; }
+  .action-btn.btn-sent { animation: btnFlash 0.6s ease; }
+  @keyframes btnFlash { 0%{background:#1d4ed8;color:#fff;border-color:#3b82f6} 100%{background:#1e293b;color:#94a3b8;border-color:#334155} }
+
+  /* ─── Terminal Dock Panel (above bottom bar) ─── */
+  #terminal-dock {
+    position: fixed; left: 0; right: 0; bottom: 52px; z-index: 90;
+    height: 0; max-height: 45vh; overflow: hidden;
+    background: rgba(13, 17, 23, 0.97); border-top: 1px solid #334155;
+    display: flex; flex-direction: column;
+    transition: height 0.25s ease;
+    backdrop-filter: blur(8px);
+  }
+  #terminal-dock.open { height: 200px; }
+  .term-dock-header {
+    display: flex; align-items: center; height: 28px; min-height: 28px;
+    padding: 0 10px; background: #0f172a; border-bottom: 1px solid #1e293b;
+    gap: 4px;
+  }
+  .term-dock-tabs { display: flex; gap: 2px; flex: 1; overflow-x: auto; }
+  .term-dock-tab {
+    padding: 3px 10px; font-size: 10px; font-family: inherit; color: #64748b;
+    background: transparent; border: 1px solid transparent; border-bottom: none;
+    border-radius: 4px 4px 0 0; cursor: pointer; white-space: nowrap;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .term-dock-tab:hover { color: #94a3b8; background: #1e293b; }
+  .term-dock-tab.active { color: #e2e8f0; background: #1e293b; border-color: #334155; }
+  .term-dock-tab .tab-dot { width: 5px; height: 5px; border-radius: 50%; }
+  .term-dock-tab .tab-close { color: #475569; font-size: 11px; margin-left: 4px; cursor: pointer; }
+  .term-dock-tab .tab-close:hover { color: #f87171; }
+  .term-dock-close {
+    background: none; border: none; color: #475569; cursor: pointer;
+    font-size: 14px; padding: 0 4px; font-family: inherit;
+  }
+  .term-dock-close:hover { color: #e2e8f0; }
+  .term-dock-resize {
+    position: absolute; top: -3px; left: 0; right: 0; height: 6px;
+    cursor: ns-resize; z-index: 1;
+  }
+  .term-dock-body {
+    flex: 1; overflow-y: auto; padding: 6px 10px; font-size: 11px; line-height: 1.6;
+    scrollbar-width: thin; scrollbar-color: #334155 transparent;
+  }
+  .term-dock-body::-webkit-scrollbar { width: 6px; }
+  .term-dock-body::-webkit-scrollbar-track { background: transparent; }
+  .term-dock-body::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+  .term-line-cmd { color: #7ee787; }
+  .term-line-cmd::before { content: '$ '; }
+  .term-line-out { color: #cdd6e0; padding-left: 12px; }
+  .term-line-err { color: #f85149; padding-left: 12px; }
+  .term-cursor {
+    display: inline-block; width: 7px; height: 12px; background: #7ee787;
+    animation: cursorBlink 1s step-end infinite; vertical-align: text-bottom;
+  }
+  @keyframes cursorBlink { 0%,50% { opacity: 1; } 51%,100% { opacity: 0; } }
+  .term-dock-empty { color: #475569; text-align: center; padding: 24px; font-size: 11px; }
+  body.terminal-open #scene { height: calc(100vh - 36px - 52px - var(--term-dock-h, 200px)); }
+  body.terminal-open #action-toast { bottom: calc(var(--term-dock-h, 200px) + 62px); }
+  body.terminal-open #terminal-dock { height: var(--term-dock-h, 200px); }
+
+  /* ─── Action Toast ─── */
+  #action-toast {
+    position: fixed; bottom: 62px; left: 50%; transform: translateX(-50%);
+    padding: 6px 16px; font-size: 11px; color: #7dd3fc; background: rgba(30,58,95,0.92);
+    border: 1px solid #1e40af; border-radius: 4px; z-index: 150;
+    opacity: 0; transition: opacity 0.3s; pointer-events: none;
+    backdrop-filter: blur(4px);
+  }
+  #action-toast.show { opacity: 1; }
+  #cmd-input {
+    flex: 1; height: 32px; padding: 0 12px; font-size: 12px; font-family: inherit;
+    background: #0f172a; color: #e2e8f0; border: 1px solid #334155; border-radius: 4px; outline: none;
+  }
+  #cmd-input:focus { border-color: #3b82f6; }
+  #cmd-input::placeholder { color: #475569; }
+  #cmd-send { padding: 6px 16px; background: #1d4ed8; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 12px; }
+  #cmd-send:hover { background: #2563eb; }
+
+  /* ─── Context Menu ─── */
+  #ctx-menu {
+    position: fixed; z-index: 200; display: none; min-width: 140px;
+    background: #1e293b; border: 1px solid #334155; border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5); overflow: hidden;
+  }
+  #ctx-menu .ctx-item {
+    padding: 8px 14px; font-size: 12px; color: #cbd5e1; cursor: pointer; display: flex; align-items: center; gap: 8px;
+  }
+  #ctx-menu .ctx-item:hover { background: #334155; color: #fff; }
+  #ctx-menu .ctx-header { padding: 6px 14px; font-size: 10px; color: #64748b; border-bottom: 1px solid #334155; }
+  .ctx-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+  /* ─── WS Status Toast ─── */
+  #ws-toast {
+    position: fixed; top: 44px; right: 16px; z-index: 150; padding: 6px 14px;
+    font-size: 11px; border-radius: 4px; display: none; transition: opacity 0.3s;
+  }
+  #ws-toast.error { display: block; background: #7f1d1d; color: #fca5a5; }
+  #ws-toast.ok { display: block; background: #064e3b; color: #6ee7b7; }
+
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+  /* ─── History Panel ─── */
+  #history-panel {
+    position: fixed; top: 36px; right: 0; width: 280px;
+    height: calc(100vh - 36px - 52px); z-index: 90;
+    background: rgba(10, 14, 23, 0.96); border-left: 1px solid #1e293b;
+    display: flex; flex-direction: column;
+    transform: translateX(100%); transition: transform 0.3s ease;
+    backdrop-filter: blur(8px);
+  }
+  #history-panel.open { transform: translateX(0); }
+  .history-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px; border-bottom: 1px solid #1e293b; flex-shrink: 0;
+  }
+  .history-header .title { font-size: 12px; font-weight: bold; color: #e2e8f0; }
+  .history-filter {
+    position: relative; display: inline-block;
+  }
+  .history-filter-btn {
+    padding: 3px 8px; font-size: 10px; font-family: inherit;
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    border-radius: 3px; cursor: pointer;
+  }
+  .history-filter-btn:hover { background: #334155; color: #e2e8f0; }
+  .history-filter-dropdown {
+    display: none; position: absolute; top: 100%; right: 0; margin-top: 4px;
+    min-width: 120px; background: #1e293b; border: 1px solid #334155;
+    border-radius: 4px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); z-index: 210;
+  }
+  .history-filter-dropdown.open { display: block; }
+  .filter-option {
+    padding: 6px 10px; font-size: 11px; color: #cbd5e1; cursor: pointer;
+  }
+  .filter-option:hover { background: #334155; color: #fff; }
+  .filter-option.active { color: #7dd3fc; }
+  .history-close-btn {
+    background: none; border: none; color: #64748b; cursor: pointer;
+    font-size: 16px; padding: 0 4px; line-height: 1;
+  }
+  .history-close-btn:hover { color: #e2e8f0; }
+  .history-list {
+    flex: 1; overflow-y: auto; padding: 8px;
+  }
+  .history-list::-webkit-scrollbar { width: 4px; }
+  .history-list::-webkit-scrollbar-track { background: transparent; }
+  .history-list::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+  .history-card {
+    background: #131a28; border: 1px solid #1e293b; border-radius: 4px;
+    margin-bottom: 6px; cursor: pointer; transition: border-color 0.15s;
+    animation: historySlideIn 0.3s ease;
+  }
+  @keyframes historySlideIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+  .history-card:hover { border-color: #334155; }
+  .history-card-header {
+    display: flex; align-items: center; gap: 6px; padding: 8px 10px;
+    font-size: 11px; color: #94a3b8;
+  }
+  .history-card-header .time { color: #64748b; min-width: 36px; }
+  .history-card-header .server { color: #7dd3fc; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .history-card-header .type-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .history-card-header .label { color: #cbd5e1; }
+  .history-card-header .result { flex-shrink: 0; }
+  .history-card-header .result.success { color: #10b981; }
+  .history-card-header .result.error { color: #ef4444; }
+  .history-card-header .result.cancelled { color: #64748b; }
+  .history-card-header .duration { color: #64748b; font-size: 10px; }
+  .history-card-detail {
+    display: none; border-top: 1px solid #1e293b;
+    max-height: 200px; overflow-y: auto; padding: 6px 8px;
+    font-size: 10px; line-height: 1.5;
+  }
+  .history-card.expanded .history-card-detail { display: block; }
+  .history-term-line { white-space: pre-wrap; word-break: break-all; }
+  .history-term-line.command { color: #7dd3fc; }
+  .history-term-line.command::before { content: '$ '; color: #3b82f6; }
+  .history-term-line.output { color: #94a3b8; }
+  .history-term-line.error { color: #fca5a5; }
+  .history-summary { margin-top: 6px; padding-top: 6px; border-top: 1px solid #1e293b; color: #fbbf24; font-size: 10px; }
+  .history-load-more {
+    text-align: center; padding: 8px; font-size: 11px; color: #3b82f6; cursor: pointer;
+  }
+  .history-load-more:hover { color: #7dd3fc; }
+  .history-empty {
+    text-align: center; padding: 32px 16px; color: #475569; font-size: 12px;
+  }
+
+  /* ─── Confirm Dialog ─── */
+  #confirm-overlay {
+    position: fixed; inset: 0; z-index: 300;
+    background: rgba(0, 0, 0, 0.5);
+    display: none; align-items: center; justify-content: center;
+    animation: fadeIn 0.2s ease;
+  }
+  #confirm-overlay.open { display: flex; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  #confirm-dialog {
+    background: rgba(10, 14, 23, 0.95); border: 1px solid #334155;
+    border-radius: 8px; min-width: 320px; max-width: 560px; width: 90vw;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+  }
+  .confirm-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; border-bottom: 1px solid #1e293b;
+    font-size: 13px; font-weight: bold; color: #e2e8f0;
+  }
+  .confirm-close {
+    background: none; border: none; color: #64748b; cursor: pointer;
+    font-size: 16px; padding: 0 4px;
+  }
+  .confirm-close:hover { color: #e2e8f0; }
+  .confirm-body { padding: 16px; font-size: 12px; color: #94a3b8; line-height: 1.6; }
+  .confirm-body .warn-text { color: #fbbf24; margin-top: 8px; font-size: 11px; }
+  .confirm-footer {
+    display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px;
+    border-top: 1px solid #1e293b;
+  }
+  .confirm-btn-cancel {
+    padding: 6px 16px; font-size: 12px; font-family: inherit;
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    border-radius: 4px; cursor: pointer;
+  }
+  .confirm-btn-cancel:hover { background: #334155; color: #e2e8f0; }
+  .confirm-btn-ok {
+    padding: 6px 16px; font-size: 12px; font-family: inherit;
+    background: #c2410c; color: #fff; border: none;
+    border-radius: 4px; cursor: pointer;
+  }
+  .confirm-btn-ok:hover { background: #ea580c; }
+
+  /* ─── Deploy Select Panel ─── */
+  .deploy-group { margin-bottom: 10px; }
+  .deploy-group-label { font-size: 11px; color: #64748b; margin-bottom: 4px; }
+  .deploy-checks { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+  .deploy-check { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #cbd5e1; cursor: pointer; }
+  .deploy-check input[type="checkbox"] { accent-color: #3b82f6; }
+  .deploy-select-actions { display: flex; gap: 8px; margin: 8px 0; }
+  .deploy-select-btn {
+    padding: 3px 8px; font-size: 10px; font-family: inherit;
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    border-radius: 3px; cursor: pointer;
+  }
+  .deploy-select-btn:hover { background: #334155; color: #e2e8f0; }
+  /* ─── Deploy Form Fields ─── */
+  .deploy-form-section { margin-top: 12px; border-top: 1px solid #1e293b; padding-top: 10px; }
+  .deploy-form-label { font-size: 11px; color: #64748b; margin-bottom: 4px; display: block; }
+  .deploy-form-row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .deploy-form-input {
+    flex: 1; padding: 6px 8px; font-size: 11px; font-family: inherit;
+    background: #0f172a; color: #e2e8f0; border: 1px solid #334155;
+    border-radius: 4px; outline: none;
+  }
+  .deploy-form-input:focus { border-color: #3b82f6; }
+  .deploy-form-input::placeholder { color: #475569; }
+  .deploy-form-textarea {
+    width: 100%; min-height: 60px; padding: 6px 8px; font-size: 11px; font-family: inherit;
+    background: #0f172a; color: #e2e8f0; border: 1px solid #334155;
+    border-radius: 4px; outline: none; resize: vertical; box-sizing: border-box;
+  }
+  .deploy-form-textarea:focus { border-color: #3b82f6; }
+  .deploy-form-textarea::placeholder { color: #475569; }
+  .deploy-form-hint { font-size: 10px; color: #475569; margin-top: 2px; }
+
+  /* ─── Top Bar History Button ─── */
+  .history-toggle-btn {
+    background: none; border: 1px solid #334155; border-radius: 3px;
+    color: #64748b; cursor: pointer; padding: 3px 8px; font-size: 12px;
+    font-family: inherit; white-space: nowrap; transition: all 0.15s;
+  }
+  .history-toggle-btn:hover { background: #1e293b; color: #e2e8f0; }
+  .history-toggle-btn.active { background: #1d4ed8; color: #fff; border-color: #3b82f6; }
+  .action-btn.active { background: #1d4ed8; color: #fff; border-color: #3b82f6; }
+
+  /* ─── Info Panels (Cron / Memory / Skills) ─── */
+  .info-panel {
+    position: fixed; top: 36px; right: 0; width: 300px;
+    height: calc(100vh - 36px - 52px); z-index: 90;
+    background: rgba(10, 14, 23, 0.96); border-left: 1px solid #1e293b;
+    display: flex; flex-direction: column;
+    transform: translateX(100%); transition: transform 0.3s ease;
+    backdrop-filter: blur(8px);
+  }
+  .info-panel.open { transform: translateX(0); }
+  body.panel-open #scene { right: 300px; }
+
+  .info-panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px; border-bottom: 1px solid #1e293b; flex-shrink: 0;
+  }
+  .info-panel-header .title { font-size: 12px; font-weight: bold; color: #e2e8f0; }
+  .info-panel-close {
+    background: none; border: none; color: #64748b; cursor: pointer;
+    font-size: 16px; padding: 0 4px; line-height: 1;
+  }
+  .info-panel-close:hover { color: #e2e8f0; }
+  .info-panel-body {
+    flex: 1; overflow-y: auto; padding: 8px;
+    scrollbar-width: thin; scrollbar-color: #334155 transparent;
+  }
+  .info-panel-body::-webkit-scrollbar { width: 4px; }
+  .info-panel-body::-webkit-scrollbar-track { background: transparent; }
+  .info-panel-body::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+  .info-panel-empty { text-align: center; padding: 32px 16px; color: #475569; font-size: 12px; }
+
+  /* Cron Panel Cards */
+  .cron-card {
+    background: #131a28; border: 1px solid #1e293b; border-radius: 6px;
+    padding: 10px 12px; margin-bottom: 8px;
+    animation: historySlideIn 0.3s ease;
+  }
+  .cron-card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .cron-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .cron-dot.running { background: #10b981; box-shadow: 0 0 6px #10b981; animation: pulse 1.5s infinite; }
+  .cron-dot.stopped { background: #ef4444; }
+  .cron-name { font-size: 12px; color: #e2e8f0; font-weight: bold; flex: 1; }
+  .cron-pid { font-size: 10px; color: #475569; }
+  .cron-detail { font-size: 11px; color: #94a3b8; line-height: 1.6; }
+  .cron-detail span { color: #64748b; }
+  .cron-detail .val { color: #7dd3fc; }
+
+  /* Memory Panel Cards */
+  .mem-card {
+    background: #131a28; border: 1px solid #1e293b; border-radius: 6px;
+    margin-bottom: 8px; cursor: pointer; transition: border-color 0.15s;
+    animation: historySlideIn 0.3s ease;
+  }
+  .mem-card:hover { border-color: #334155; }
+  .mem-card-header {
+    display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+  }
+  .mem-alias { font-size: 12px; color: #7dd3fc; font-weight: bold; flex: 1; }
+  .mem-os { font-size: 10px; color: #64748b; }
+  .mem-badges { display: flex; gap: 4px; }
+  .mem-badge { padding: 1px 5px; border-radius: 3px; font-size: 9px; }
+  .mem-badge.issues { background: #7f1d1d; color: #fca5a5; }
+  .mem-badge.clean { background: #064e3b; color: #6ee7b7; }
+  .mem-card-detail {
+    display: none; border-top: 1px solid #1e293b; padding: 10px 12px;
+    font-size: 11px; color: #94a3b8; line-height: 1.6;
+  }
+  .mem-card.expanded .mem-card-detail { display: block; }
+  .mem-issue-item { color: #fbbf24; padding-left: 8px; }
+  .mem-issue-item::before { content: '! '; color: #f59e0b; }
+  .mem-label { color: #64748b; }
+
+  /* Skills Panel */
+  .skill-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; border-bottom: 1px solid #1e293b;
+    cursor: pointer; transition: background 0.15s;
+    animation: historySlideIn 0.3s ease;
+  }
+  .skill-item:last-child { border-bottom: none; }
+  .skill-item:hover { background: #1e293b; }
+  .skill-icon { font-size: 14px; flex-shrink: 0; width: 20px; text-align: center; }
+  .skill-info { flex: 1; min-width: 0; }
+  .skill-name { font-size: 12px; color: #7dd3fc; font-weight: bold; }
+  .skill-desc { font-size: 10px; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .skill-arrow { color: #334155; font-size: 12px; flex-shrink: 0; }
+  .skill-item:hover .skill-arrow { color: #7dd3fc; }
+</style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<div id="top-bar">
+  <span class="logo">&#9670; Pixel Ops</span>
+  <span id="op-banner" class="operation-banner">就绪，等待操作...</span>
+  <div class="status-group">
+    <span><span id="claude-dot" class="status-dot disconnected"></span> <span id="claude-label">未连接</span></span>
+    <span id="stat-ok" class="stat-badge ok">&#9679; 0</span>
+    <span id="stat-warn" class="stat-badge warn">&#9679; 0</span>
+    <span id="stat-crit" class="stat-badge crit">&#9679; 0</span>
+    <span id="stat-total" class="stat-badge total">&#9632; 0</span>
+  </div>
+  <button id="history-toggle" class="history-toggle-btn" title="操作历史">&#9776;</button>
+</div>
+
+<!-- Progress Bar -->
+<div id="progress-bar"><div class="fill" style="width:0%"></div></div>
+
+<!-- Canvas -->
+<canvas id="scene"></canvas>
+
+<!-- Terminal Dock Panel -->
+<div id="terminal-dock">
+  <div class="term-dock-resize" id="term-resize-handle"></div>
+  <div class="term-dock-header">
+    <div class="term-dock-tabs" id="term-tabs"></div>
+    <button class="term-dock-close" id="term-dock-close" title="关闭终端">&times;</button>
+  </div>
+  <div class="term-dock-body" id="term-dock-body">
+    <div class="term-dock-empty">等待操作...</div>
+  </div>
+</div>
+
+<!-- Bottom Bar -->
+<div id="bottom-bar">
+  <button class="action-btn" data-action="check-all">巡检所有</button>
+  <button class="action-btn" data-action="check-warning">检查异常</button>
+  <button class="action-btn" data-action="deploy-all">批量部署</button>
+  <button class="action-btn" data-action="toggle-history">历史记录</button>
+  <button class="action-btn" data-action="toggle-cron">定时任务</button>
+  <button class="action-btn" data-action="toggle-memory">记忆</button>
+  <button class="action-btn" data-action="toggle-skills">技能</button>
+  <input id="cmd-input" type="text" placeholder="输入指令给 Claude..." />
+  <button id="cmd-send">发送</button>
+</div>
+
+<!-- Context Menu -->
+<div id="ctx-menu">
+  <div class="ctx-header" id="ctx-title">实体</div>
+  <div class="ctx-item" data-action="check"><span class="ctx-dot" style="background:#3b82f6"></span>健康检查</div>
+  <div class="ctx-item" data-action="logs"><span class="ctx-dot" style="background:#f59e0b"></span>查看日志</div>
+  <div class="ctx-item" data-action="deploy"><span class="ctx-dot" style="background:#10b981"></span>部署更新</div>
+  <div class="ctx-item" data-action="nginx"><span class="ctx-dot" style="background:#f97316"></span>Nginx/SSL</div>
+</div>
+
+<!-- History Panel -->
+<div id="history-panel">
+  <div class="history-header">
+    <span class="title">操作历史</span>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <div class="history-filter">
+        <button class="history-filter-btn" id="filter-btn">全部</button>
+        <div class="history-filter-dropdown" id="filter-dropdown">
+          <div class="filter-option active" data-filter="all">全部</div>
+          <div class="filter-option" data-filter="success">仅成功</div>
+          <div class="filter-option" data-filter="error">仅失败</div>
+          <div class="filter-option" data-filter="health-check">健康检查</div>
+          <div class="filter-option" data-filter="deploy">部署</div>
+          <div class="filter-option" data-filter="logs">日志分析</div>
+          <div class="filter-option" data-filter="nginx">Nginx</div>
+        </div>
+      </div>
+      <button class="history-close-btn" id="history-close">&times;</button>
+    </div>
+  </div>
+  <div class="history-list" id="history-list">
+    <div class="history-empty">暂无操作记录</div>
+  </div>
+</div>
+
+<!-- Cron Panel -->
+<div id="cron-panel" class="info-panel">
+  <div class="info-panel-header">
+    <span class="title">定时任务</span>
+    <button class="info-panel-close" data-panel="cron">&times;</button>
+  </div>
+  <div class="info-panel-body" id="cron-panel-body">
+    <div class="info-panel-empty">加载中...</div>
+  </div>
+</div>
+
+<!-- Memory Panel -->
+<div id="memory-panel" class="info-panel">
+  <div class="info-panel-header">
+    <span class="title">实体记忆</span>
+    <button class="info-panel-close" data-panel="memory">&times;</button>
+  </div>
+  <div class="info-panel-body" id="memory-panel-body">
+    <div class="info-panel-empty">加载中...</div>
+  </div>
+</div>
+
+<!-- Skills Panel -->
+<div id="skills-panel" class="info-panel">
+  <div class="info-panel-header">
+    <span class="title">可用技能</span>
+    <button class="info-panel-close" data-panel="skills">&times;</button>
+  </div>
+  <div class="info-panel-body" id="skills-panel-body">
+    <div class="info-panel-empty">加载中...</div>
+  </div>
+</div>
+
+<!-- Confirm Dialog -->
+<div id="confirm-overlay">
+  <div id="confirm-dialog">
+    <div class="confirm-header">
+      <span id="confirm-title">确认</span>
+      <button class="confirm-close" id="confirm-close-btn">&times;</button>
+    </div>
+    <div class="confirm-body" id="confirm-body"></div>
+    <div class="confirm-footer">
+      <button class="confirm-btn-cancel" id="confirm-cancel">取消</button>
+      <button class="confirm-btn-ok" id="confirm-ok">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- WS Toast -->
+<div id="ws-toast"></div>
+<!-- Action Toast -->
+<div id="action-toast"></div>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+// ─── CONFIGURATION ───
+// ════════════════════════════════════════════════════════════════
+const TILE_W = 96;
+const TILE_H = 48;
+const RACK_W = 72;
+const RACK_DEPTH = 38;
+const RACK_HEIGHT = 100;
+const WORKER_SPEED = 0.035;
+const WORKER_BACK_SPEED = 0.045;
+
+const COLORS = {
+  floor1: '#0f1520', floor2: '#131a28', floorLine: '#1a2236',
+  wallBack: '#151d2e', wallLeft: '#121929', wallLine: '#1e293b',
+  rackTop: '#3d4a5c', rackLeft: '#2a3344', rackRight: '#4a5568', rackFront: '#384455',
+  rackDetail: '#2d3748', rackHighlight: '#3b82f6',
+  ledOk: '#10b981', ledWarn: '#f59e0b', ledCrit: '#ef4444', ledOff: '#374151',
+  workerSkin: '#fbbf24', workerHair: '#92400e',
+  workerBlue: '#3b82f6', workerGreen: '#10b981', workerYellow: '#f59e0b', workerOrange: '#f97316',
+  deskTop: '#4a3728', deskFront: '#3a2a1d', deskSide: '#5a4535',
+  monitorFrame: '#1e293b', monitorScreen: '#0ea5e9',
+};
+
+const WORKER_TYPE_COLORS = {
+  'health-check': COLORS.workerBlue,
+  'deploy': COLORS.workerGreen,
+  'logs': COLORS.workerYellow,
+  'analyze-logs': COLORS.workerYellow,
+  'nginx': COLORS.workerOrange,
+  'manage-nginx-ssl': COLORS.workerOrange,
+};
+
+const WORKER_AVATARS = [
+  { skin: '#fbbf24', hair: '#92400e', hairStyle: 'short', scale: 1.0 },
+  { skin: '#d4a574', hair: '#1a1a2e', hairStyle: 'spiky', scale: 1.05 },
+  { skin: '#ffe0bd', hair: '#c0392b', hairStyle: 'long', scale: 0.95 },
+  { skin: '#8d5524', hair: '#e2e8f0', hairStyle: 'bald', scale: 1.08 },
+  { skin: '#f1c27d', hair: '#2c3e50', hairStyle: 'ponytail', scale: 0.98 },
+];
+let avatarCounter = 0;
+
+// ════════════════════════════════════════════════════════════════
+// ─── STATE ───
+// ════════════════════════════════════════════════════════════════
+const scene = {
+  servers: {},       // { alias: { alias, label, group, tags, metrics, wx, wy, _active, _hover } }
+  groups: {},        // { groupName: [alias, ...] }
+  workers: {},       // { wId: { id, type, target, label, state, wx, wy, dir, bubble, termLines, result, finishTime } }
+  particles: [],     // [{ x, y, vx, vy, life, color }]
+  claudeStatus: 'idle',
+  operation: null,
+  progress: null,
+  floatingTerms: {}, // { wId: { visible, expanded } }
+  hoverServer: null,
+  selectedServer: null,
+};
+
+const camera = { x: 0, y: 0 };
+const WORKSTATION = { wx: 0, wy: 4 };
+const ROOM_W = 16;
+const ROOM_H = 8;
+
+// ════════════════════════════════════════════════════════════════
+// ─── CANVAS SETUP ───
+// ════════════════════════════════════════════════════════════════
+const canvas = document.getElementById('scene');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  W = rect.width;
+  H = rect.height;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  // Let CSS control the layout size — do NOT set canvas.style.width/height here
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  centerCamera();
+}
+// Use ResizeObserver for precise layout-change response (history panel open/close, window resize)
+const _canvasRO = new ResizeObserver(() => resizeCanvas());
+_canvasRO.observe(canvas);
+
+// ════════════════════════════════════════════════════════════════
+// ─── ISOMETRIC MATH ───
+// ════════════════════════════════════════════════════════════════
+function worldToScreen(wx, wy, wz) {
+  const sx = (wx - wy) * (TILE_W / 2) + camera.x + W / 2;
+  const sy = (wx + wy) * (TILE_H / 2) - (wz || 0) + camera.y + H / 2;
+  return { x: sx, y: sy };
+}
+
+function screenToWorld(sx, sy) {
+  const rx = sx - camera.x - W / 2;
+  const ry = sy - camera.y - H / 2;
+  const wx = (rx / (TILE_W / 2) + ry / (TILE_H / 2)) / 2;
+  const wy = (ry / (TILE_H / 2) - rx / (TILE_W / 2)) / 2;
+  return { wx, wy };
+}
+
+function centerCamera() {
+  const aliases = Object.keys(scene.servers);
+  if (aliases.length === 0) {
+    camera.x = 0; camera.y = -40;
+    return;
+  }
+  let sumWx = 0, sumWy = 0;
+  aliases.forEach(a => { sumWx += scene.servers[a].wx; sumWy += scene.servers[a].wy; });
+  const cx = sumWx / aliases.length;
+  const cy = sumWy / aliases.length;
+  // Calculate raw iso position (without camera offset)
+  const rawX = (cx - cy) * (TILE_W / 2);
+  const rawY = (cx + cy) * (TILE_H / 2);
+  // Center the scene: camera offset makes raw center appear at screen center
+  camera.x = -rawX;
+  camera.y = -rawY - 20;
+}
+
+// ════════════════════════════════════════════════════════════════
+// ─── DRAWING HELPERS ───
+// ════════════════════════════════════════════════════════════════
+function px(x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(Math.floor(x), Math.floor(y), w, h);
+}
+
+// Draw isometric box (cuboid)
+// sx,sy = screen position of the BOTTOM CENTER of the box on the ground
+// w = iso tile width, d = depth (front-to-back on screen), h = height upward
+function drawIsoBox(sx, sy, w, d, h, topCol, leftCol, rightCol) {
+  const hw = w / 2;
+  const hh = d / 4; // half of the iso depth visual
+
+  // Right face (front-facing)
+  ctx.fillStyle = rightCol;
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);                    // bottom center
+  ctx.lineTo(sx + hw, sy - hh);          // bottom right
+  ctx.lineTo(sx + hw, sy - hh - h);      // top right
+  ctx.lineTo(sx, sy - h);                // top center
+  ctx.closePath();
+  ctx.fill();
+
+  // Left face
+  ctx.fillStyle = leftCol;
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);                    // bottom center
+  ctx.lineTo(sx - hw, sy - hh);          // bottom left
+  ctx.lineTo(sx - hw, sy - hh - h);      // top left
+  ctx.lineTo(sx, sy - h);                // top center
+  ctx.closePath();
+  ctx.fill();
+
+  // Top face
+  ctx.fillStyle = topCol;
+  ctx.beginPath();
+  ctx.moveTo(sx, sy - h - d / 2);        // top peak
+  ctx.lineTo(sx + hw, sy - hh - h);      // right
+  ctx.lineTo(sx, sy - h);                // bottom
+  ctx.lineTo(sx - hw, sy - hh - h);      // left
+  ctx.closePath();
+  ctx.fill();
+}
+
+// ════════════════════════════════════════════════════════════════
+// ─── SCENE DRAWING ───
+// ════════════════════════════════════════════════════════════════
+function drawFloor() {
+  for (let wx = -1; wx < ROOM_W; wx++) {
+    for (let wy = -1; wy < ROOM_H; wy++) {
+      const { x, y } = worldToScreen(wx, wy, 0);
+      const isDark = (wx + wy) % 2 === 0;
+      ctx.fillStyle = isDark ? COLORS.floor1 : COLORS.floor2;
+      ctx.beginPath();
+      ctx.moveTo(x, y - TILE_H / 2);
+      ctx.lineTo(x + TILE_W / 2, y);
+      ctx.lineTo(x, y + TILE_H / 2);
+      ctx.lineTo(x - TILE_W / 2, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = COLORS.floorLine;
+      ctx.lineWidth = 0.3;
+      ctx.stroke();
+    }
+  }
+}
+
+function drawWalls() {
+  const wallH = 120;
+
+  // Back wall (along wy = -1)
+  for (let wx = -1; wx < ROOM_W; wx++) {
+    const bl = worldToScreen(wx, -1, 0);
+    const br = worldToScreen(wx + 1, -1, 0);
+    ctx.fillStyle = COLORS.wallBack;
+    ctx.beginPath();
+    ctx.moveTo(bl.x, bl.y);
+    ctx.lineTo(br.x, br.y);
+    ctx.lineTo(br.x, br.y - wallH);
+    ctx.lineTo(bl.x, bl.y - wallH);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = COLORS.wallLine;
+    ctx.lineWidth = 0.3;
+    ctx.stroke();
+  }
+
+  // Left wall (along wx = -1)
+  for (let wy = -1; wy < ROOM_H; wy++) {
+    const bt = worldToScreen(-1, wy, 0);
+    const bb = worldToScreen(-1, wy + 1, 0);
+    ctx.fillStyle = COLORS.wallLeft;
+    ctx.beginPath();
+    ctx.moveTo(bt.x, bt.y);
+    ctx.lineTo(bb.x, bb.y);
+    ctx.lineTo(bb.x, bb.y - wallH);
+    ctx.lineTo(bt.x, bt.y - wallH);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = COLORS.wallLine;
+    ctx.lineWidth = 0.3;
+    ctx.stroke();
+  }
+}
+
+function drawWorkstation(t) {
+  const { x: sx, y: sy } = worldToScreen(WORKSTATION.wx, WORKSTATION.wy, 0);
+
+  // Desk
+  drawIsoBox(sx, sy, 64, 32, 28, COLORS.deskTop, COLORS.deskSide, COLORS.deskFront);
+
+  // Monitor
+  const mx = sx, my = sy - 28;
+  // Screen
+  drawIsoBox(mx, my, 32, 16, 26, COLORS.monitorFrame, COLORS.monitorFrame, COLORS.monitorScreen);
+
+  // Screen glow
+  const glowPulse = 0.3 + Math.sin(t / 800) * 0.1;
+  ctx.save();
+  ctx.globalAlpha = glowPulse;
+  ctx.fillStyle = COLORS.monitorScreen;
+  ctx.beginPath();
+  ctx.arc(mx + 8, my - 30, 22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Label
+  ctx.fillStyle = '#64748b';
+  ctx.font = '12px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Claude', sx, sy + 18);
+}
+
+function drawServerRack(alias, srv, t) {
+  const { x: sx, y: sy } = worldToScreen(srv.wx, srv.wy, 0);
+
+  const isActive = srv._active;
+  const isHover = scene.hoverServer === alias;
+  const metrics = srv.metrics;
+  const status = metrics?.status || 'unknown';
+
+  // Active glow
+  if (isActive) {
+    ctx.save();
+    ctx.globalAlpha = 0.08 + Math.sin(t / 300) * 0.04;
+    ctx.fillStyle = COLORS.rackHighlight;
+    ctx.beginPath();
+    ctx.arc(sx, sy - RACK_HEIGHT / 2, RACK_W, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Hover glow
+  if (isHover) {
+    ctx.save();
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = '#7dd3fc';
+    ctx.beginPath();
+    ctx.arc(sx, sy - RACK_HEIGHT / 2, RACK_W * 0.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // History panel highlight flash
+  if (_highlightAlias === alias && performance.now() < _highlightEnd) {
+    const flash = Math.sin(performance.now() / 150) * 0.5 + 0.5;
+    ctx.save();
+    ctx.globalAlpha = 0.15 * flash;
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.arc(sx, sy - RACK_HEIGHT / 2, RACK_W, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Rack body
+  drawIsoBox(sx, sy, RACK_W, RACK_DEPTH, RACK_HEIGHT, COLORS.rackTop, COLORS.rackLeft, COLORS.rackRight);
+
+  // Drive bays on right face (front)
+  const hw = RACK_W / 2;
+  const hh = RACK_DEPTH / 4;
+  ctx.strokeStyle = COLORS.rackDetail;
+  ctx.lineWidth = 0.8;
+  for (let i = 1; i <= 5; i++) {
+    const frac = i / 6;
+    const ly = sy - frac * RACK_HEIGHT;
+    ctx.beginPath();
+    ctx.moveTo(sx + 2, ly);
+    ctx.lineTo(sx + hw - 2, ly - hh + 2);
+    ctx.stroke();
+  }
+
+  // LEDs
+  const ledColors = { ok: COLORS.ledOk, warning: COLORS.ledWarn, critical: COLORS.ledCrit, unknown: COLORS.ledOff };
+  const ledColor = ledColors[status] || COLORS.ledOff;
+  const blink = status !== 'unknown' ? (Math.sin(t / 500) > 0) : false;
+
+  // Status LED
+  ctx.fillStyle = blink ? ledColor : COLORS.ledOff;
+  ctx.beginPath();
+  ctx.arc(sx + hw - 6, sy - hh - RACK_HEIGHT + 10, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Activity LED (always green blink if active)
+  if (isActive) {
+    ctx.fillStyle = Math.sin(t / 200) > 0 ? '#10b981' : COLORS.ledOff;
+    ctx.beginPath();
+    ctx.arc(sx + hw - 6, sy - hh - RACK_HEIGHT + 16, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // LED glow
+  if (status !== 'unknown') {
+    ctx.save();
+    ctx.globalAlpha = blink ? 0.25 : 0.05;
+    ctx.fillStyle = ledColor;
+    ctx.beginPath();
+    ctx.arc(sx + hw - 6, sy - hh - RACK_HEIGHT + 10, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Active border
+  if (isActive) {
+    ctx.save();
+    ctx.strokeStyle = COLORS.rackHighlight;
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 0.5 + Math.sin(t / 300) * 0.3;
+    // Simple outline around the front face
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(sx + hw, sy - hh);
+    ctx.lineTo(sx + hw, sy - hh - RACK_HEIGHT);
+    ctx.lineTo(sx, sy - RACK_HEIGHT);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Alias label
+  ctx.fillStyle = isHover ? '#e2e8f0' : '#8899aa';
+  ctx.font = isHover ? 'bold 13px monospace' : '12px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(alias, sx, sy + 16);
+
+  // Group label (smaller, below alias)
+  if (srv.group) {
+    ctx.fillStyle = '#556677';
+    ctx.font = '10px monospace';
+    ctx.fillText(srv.group, sx, sy + 28);
+  }
+
+  // Metrics mini display on hover
+  if (isHover && metrics) {
+    const mx = sx, my = sy - RACK_HEIGHT - 30;
+    const txt = `CPU:${metrics.cpu || '?'} MEM:${metrics.memory || '?'} DSK:${metrics.disk || '?'}`;
+    ctx.font = '11px monospace';
+    const tw = ctx.measureText(txt).width + 16;
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+    ctx.beginPath();
+    ctx.roundRect(mx - tw / 2, my - 10, tw, 20, 4);
+    ctx.fill();
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+    ctx.fillStyle = '#94a3b8';
+    ctx.textAlign = 'center';
+    ctx.fillText(txt, mx, my + 4);
+  }
+
+  // Store screen position for hit testing
+  srv._sx = sx; srv._sy = sy;
+}
+
+// ════════════════════════════════════════════════════════════════
+// ─── WORKER DRAWING ───
+// ════════════════════════════════════════════════════════════════
+function getWorkerDirection(dx, dy) {
+  if (Math.abs(dx) >= Math.abs(dy)) return dx > 0 ? 'SE' : 'NW';
+  return dy > 0 ? 'SW' : 'NE';
+}
+
+function drawWorker(w, t) {
+  const { x: sx, y: sy } = worldToScreen(w.wx, w.wy, 0);
+  const bc = WORKER_TYPE_COLORS[w.type] || COLORS.workerBlue;
+  const isWalking = w.state === 'walking' || w.state === 'walking_back';
+  const frame = Math.floor(t / 150) % 2;
+  const facingCamera = w.dir === 'SE' || w.dir === 'SW' || !w.dir;
+  const av = WORKER_AVATARS[(w.avatarIdx || 0) % WORKER_AVATARS.length];
+
+  ctx.save();
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(sx, sy + 2, 10, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Scale factor for worker (avatar-based)
+  const S = 1.6 * (av.scale || 1.0);
+
+  // Legs
+  ctx.fillStyle = '#374151';
+  if (isWalking) {
+    const legOff = frame === 0 ? 3 : -3;
+    px(sx - 4*S + legOff, sy - 8*S, 4*S, 9*S, '#374151');
+    px(sx + 1*S - legOff, sy - 8*S, 4*S, 9*S, '#374151');
+  } else {
+    px(sx - 4*S, sy - 8*S, 4*S, 9*S, '#374151');
+    px(sx + 1*S, sy - 8*S, 4*S, 9*S, '#374151');
+  }
+
+  // Boots
+  px(sx - 5*S, sy - 1*S, 5*S, 3*S, '#1e293b');
+  px(sx + 1*S, sy - 1*S, 5*S, 3*S, '#1e293b');
+
+  // Body
+  px(sx - 6*S, sy - 22*S, 13*S, 14*S, bc);
+  // Belt
+  px(sx - 6*S, sy - 9*S, 13*S, 3*S, '#1a202c');
+
+  // Arms
+  const armCol = bc;
+  if (w.state === 'working') {
+    const armWiggle = Math.sin(t / 200) * 3;
+    px(sx - 9*S, sy - 19*S + armWiggle, 4*S, 8*S, armCol);
+    px(sx + 6*S, sy - 19*S - armWiggle, 4*S, 8*S, armCol);
+  } else {
+    px(sx - 9*S, sy - 19*S, 4*S, 10*S, armCol);
+    px(sx + 6*S, sy - 19*S, 4*S, 10*S, armCol);
+  }
+
+  // Head (avatar skin color)
+  px(sx - 5*S, sy - 32*S, 11*S, 10*S, av.skin);
+
+  // Hair (avatar style)
+  drawWorkerHair(sx, sy, S, av, facingCamera);
+
+  // Eyes
+  if (facingCamera) {
+    px(sx - 3*S, sy - 28*S, 3*S, 3*S, '#1a202c');
+    px(sx + 2*S, sy - 28*S, 3*S, 3*S, '#1a202c');
+    px(sx - 2*S, sy - 28*S, 1.5*S, 1.5*S, '#fff');
+    px(sx + 3*S, sy - 28*S, 1.5*S, 1.5*S, '#fff');
+  } else {
+    px(sx - 4*S, sy - 34*S, 9*S, 4*S, av.hair);
+  }
+
+  // Hard hat for deploy workers
+  if (w.type === 'deploy') {
+    px(sx - 6*S, sy - 37*S, 13*S, 4*S, '#fbbf24');
+    px(sx - 4*S, sy - 38*S, 9*S, 3*S, '#f59e0b');
+  }
+
+  // Tool
+  drawWorkerTool(sx, sy, w.type, t);
+
+  // Speech bubble (pass worker for hit rect storage)
+  if (w.bubble && (w.state === 'walking' || w.state === 'working')) {
+    drawBubble(sx, sy - 42 * S, w.bubble, w);
+  } else {
+    w._bubbleRect = null;
+  }
+
+  // Name tag (target server)
+  if (w.state !== 'walking_back' && w.target) {
+    ctx.font = '8px monospace';
+    const tagText = w.target;
+    const tagW = ctx.measureText(tagText).width + 6;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.beginPath();
+    ctx.roundRect(sx - tagW/2, sy + 4, tagW, 12, 3);
+    ctx.fill();
+    ctx.fillStyle = '#9ca3af';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(tagText, sx, sy + 10);
+  }
+
+  // Cancel button (red × next to worker when walking or working)
+  if (w.state === 'walking' || w.state === 'working') {
+    const cbx = sx + 14 * S, cby = sy - 40 * S;
+    ctx.save();
+    // Red circle background
+    ctx.fillStyle = 'rgba(127, 29, 29, 0.85)';
+    ctx.beginPath();
+    ctx.arc(cbx, cby, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // × symbol
+    ctx.fillStyle = '#fca5a5';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('×', cbx, cby);
+    ctx.restore();
+    // Store for hit testing
+    w._cancelRect = { x: cbx - 8, y: cby - 8, w: 16, h: 16 };
+  } else {
+    w._cancelRect = null;
+  }
+
+  // Finish indicator
+  if (w.state === 'finished') {
+    const elapsed = (t - w.finishTime) / 1000;
+    const floatY = sy - 45 * S - elapsed * 20;
+    const alpha = Math.max(0, 1 - elapsed / 1.5);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'center';
+    if (w.result === 'success') {
+      ctx.fillStyle = '#10b981';
+      ctx.fillText('✓', sx, floatY);
+    } else {
+      ctx.fillStyle = '#ef4444';
+      ctx.fillText('✗', sx, floatY);
+    }
+    ctx.restore();
+  }
+
+  ctx.restore();
+
+  w._sx = sx; w._sy = sy;
+}
+
+function drawWorkerHair(sx, sy, S, av, facingCamera) {
+  const hc = av.hair;
+  switch (av.hairStyle) {
+    case 'short':
+      px(sx - 5*S, sy - 35*S, 11*S, 5*S, hc);
+      break;
+    case 'spiky':
+      px(sx - 5*S, sy - 35*S, 11*S, 4*S, hc);
+      // Spiky top
+      px(sx - 4*S, sy - 38*S, 3*S, 3*S, hc);
+      px(sx - 0*S, sy - 39*S, 3*S, 4*S, hc);
+      px(sx + 3*S, sy - 37*S, 3*S, 2*S, hc);
+      break;
+    case 'long':
+      px(sx - 5*S, sy - 35*S, 11*S, 5*S, hc);
+      // Side hair extending down
+      if (facingCamera) {
+        px(sx - 6*S, sy - 32*S, 3*S, 10*S, hc);
+        px(sx + 5*S, sy - 32*S, 3*S, 10*S, hc);
+      }
+      break;
+    case 'bald':
+      // No hair, just a highlight on head
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.beginPath();
+      ctx.ellipse(sx + 1*S, sy - 33*S, 4*S, 2*S, 0, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case 'ponytail':
+      px(sx - 5*S, sy - 35*S, 11*S, 5*S, hc);
+      // Ponytail back
+      px(sx + 5*S, sy - 33*S, 3*S, 3*S, hc);
+      px(sx + 7*S, sy - 30*S, 2*S, 6*S, hc);
+      break;
+  }
+}
+
+function drawWorkerTool(sx, sy, type, t) {
+  const toolY = sy - 22;
+  const toolX = sx + 14;
+  ctx.save();
+  if (type === 'health-check') {
+    ctx.strokeStyle = '#93c5fd';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(toolX, toolY - 6, 6, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(toolX + 4, toolY - 2);
+    ctx.lineTo(toolX + 9, toolY + 3);
+    ctx.stroke();
+  } else if (type === 'deploy') {
+    ctx.fillStyle = '#a1a1aa';
+    px(toolX - 1, toolY - 10, 3, 12, '#a1a1aa');
+    px(toolX - 3, toolY - 11, 7, 3, '#a1a1aa');
+  } else if (type === 'logs' || type === 'analyze-logs') {
+    ctx.fillStyle = '#fde68a';
+    px(toolX - 2, toolY - 10, 9, 12, '#fde68a');
+    px(toolX, toolY - 7, 5, 1.5, '#92400e');
+    px(toolX, toolY - 4, 4, 1.5, '#92400e');
+  } else if (type === 'nginx' || type === 'manage-nginx-ssl') {
+    ctx.strokeStyle = '#fb923c';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(toolX, toolY - 5, 5, 0, Math.PI * 2);
+    ctx.stroke();
+    const spokes = 4;
+    for (let i = 0; i < spokes; i++) {
+      const a = (i / spokes) * Math.PI * 2 + t / 500;
+      ctx.beginPath();
+      ctx.moveTo(toolX + Math.cos(a) * 3, toolY - 5 + Math.sin(a) * 3);
+      ctx.lineTo(toolX + Math.cos(a) * 7, toolY - 5 + Math.sin(a) * 7);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function drawBubble(x, y, text, worker) {
+  const maxChars = 18;
+  const displayText = text.length > maxChars ? text.slice(0, maxChars - 1) + '…' : text;
+  ctx.font = '9px monospace';
+  const tw = ctx.measureText(displayText).width + 10;
+  const bx = x - tw / 2, by = y - 14;
+
+  ctx.fillStyle = 'rgba(30, 41, 59, 0.92)';
+  ctx.beginPath();
+  ctx.roundRect(bx, by, tw, 16, 4);
+  ctx.fill();
+  ctx.strokeStyle = '#475569';
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
+
+  // Pointer
+  ctx.fillStyle = 'rgba(30, 41, 59, 0.92)';
+  ctx.beginPath();
+  ctx.moveTo(x - 3, by + 16);
+  ctx.lineTo(x, by + 20);
+  ctx.lineTo(x + 3, by + 16);
+  ctx.fill();
+
+  ctx.fillStyle = '#e2e8f0';
+  ctx.textAlign = 'center';
+  ctx.fillText(displayText, x, by + 11);
+
+  // Store bubble rect for hit testing
+  if (worker) {
+    worker._bubbleRect = { x: bx, y: by, w: tw, h: 20 };
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// ─── FLOATING TERMINAL PANELS ───
+// ════════════════════════════════════════════════════════════════
+function drawTermIndicator(w, t) {
+  // Small clickable indicator showing terminal data is available
+  if (!w.termLines || w.termLines.length === 0) return;
+  if (w.state !== 'working' && w.state !== 'finished') return;
+
+  const { x: sx, y: sy } = worldToScreen(w.wx, w.wy, 0);
+  const S = 1.6;
+  const ix = sx + 12 * S, iy = sy - 36 * S;
+
+  // Pulsing mini terminal icon
+  const pulse = 0.6 + Math.sin(t / 400) * 0.3;
+  ctx.save();
+  ctx.globalAlpha = pulse;
+
+  // Mini terminal box
+  ctx.fillStyle = 'rgba(13, 17, 23, 0.9)';
+  ctx.beginPath();
+  ctx.roundRect(ix - 8, iy - 6, 16, 12, 2);
+  ctx.fill();
+  ctx.strokeStyle = '#475569';
+  ctx.lineWidth = 0.6;
+  ctx.stroke();
+
+  // Terminal lines inside
+  ctx.fillStyle = '#7ee787';
+  ctx.fillRect(ix - 5, iy - 3, 6, 1.5);
+  ctx.fillStyle = '#cdd6e0';
+  ctx.fillRect(ix - 5, iy, 8, 1.5);
+  ctx.fillStyle = '#7ee787';
+  ctx.fillRect(ix - 5, iy + 3, 4, 1.5);
+
+  ctx.restore();
+
+  // Store for hit testing
+  w._indicatorRect = { x: ix - 8, y: iy - 6, w: 16, h: 12 };
+}
+
+function drawFloatingTerminal(w, t) {
+  if (!w.termLines || w.termLines.length === 0) return;
+  if (w.state !== 'working' && w.state !== 'finished') return;
+  // Only draw the small indicator icon — terminal content shows in the HTML dock panel
+  drawTermIndicator(w, t);
+}
+
+// ════════════════════════════════════════════════════════════════
+// ─── PARTICLES ───
+// ════════════════════════════════════════════════════════════════
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    scene.particles.push({
+      x, y, color,
+      vx: (Math.random() - 0.5) * 3,
+      vy: -Math.random() * 2 - 1,
+      life: 1,
+    });
+  }
+}
+
+function drawParticles(dt) {
+  scene.particles = scene.particles.filter(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.05;
+    p.life -= dt * 0.001;
+    if (p.life <= 0) return false;
+
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(Math.floor(p.x) - 1, Math.floor(p.y) - 1, 3, 3);
+    ctx.restore();
+    return true;
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+// ─── WORKER STATE UPDATE ───
+// ════════════════════════════════════════════════════════════════
+function updateWorkers(t) {
+  Object.values(scene.workers).forEach(w => {
+    if (w.state === 'walking') {
+      const target = scene.servers[w.target];
+      if (!target) return;
+      const dx = target.wx - w.wx;
+      const dy = target.wy - w.wy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < 0.15) {
+        w.wx = target.wx;
+        w.wy = target.wy;
+        w.state = 'working';
+        target._active = true;
+      } else {
+        w.wx += (dx / dist) * WORKER_SPEED;
+        w.wy += (dy / dist) * WORKER_SPEED;
+        w.dir = getWorkerDirection(dx, dy);
+      }
+    } else if (w.state === 'walking_back') {
+      const dx = WORKSTATION.wx - w.wx;
+      const dy = WORKSTATION.wy - w.wy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < 0.15) {
+        w.state = 'remove';
+      } else {
+        w.wx += (dx / dist) * WORKER_BACK_SPEED;
+        w.wy += (dy / dist) * WORKER_BACK_SPEED;
+        w.dir = getWorkerDirection(dx, dy);
+      }
+    } else if (w.state === 'finished' && !w.finishTime) {
+      w.finishTime = t;
+      const { x, y } = worldToScreen(w.wx, w.wy, 0);
+      const color = w.result === 'success' ? '#10b981' : '#ef4444';
+      spawnParticles(x, y - RACK_HEIGHT / 2, color, 12);
+    } else if (w.state === 'finished' && t - w.finishTime > 2000) {
+      w.state = 'walking_back';
+      const target = scene.servers[w.target];
+      if (target) target._active = false;
+    }
+  });
+
+  // Remove completed workers
+  Object.keys(scene.workers).forEach(id => {
+    if (scene.workers[id].state === 'remove') {
+      delete scene.workers[id];
+      // Update terminal dock tabs if open
+      if (termDock?.classList.contains('open')) renderTermTabs();
+    }
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+// ─── MAIN RENDER LOOP ───
+// ════════════════════════════════════════════════════════════════
+let lastTime = 0;
+function render(t) {
+  const dt = t - lastTime;
+  lastTime = t;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Update workers
+  updateWorkers(t);
+
+  // Background
+  ctx.fillStyle = '#0a0e17';
+  ctx.fillRect(0, 0, W, H);
+
+  // Scene elements
+  drawWalls();
+  drawFloor();
+
+  // Collect entities for depth sorting
+  const entities = [];
+
+  // Workstation
+  entities.push({ wx: WORKSTATION.wx, wy: WORKSTATION.wy, wz: 0, type: 'workstation' });
+
+  // Server racks
+  Object.entries(scene.servers).forEach(([alias, srv]) => {
+    entities.push({ wx: srv.wx, wy: srv.wy, wz: 0, type: 'rack', alias });
+  });
+
+  // Workers
+  Object.values(scene.workers).forEach(w => {
+    entities.push({ wx: w.wx, wy: w.wy, wz: 0, type: 'worker', worker: w });
+  });
+
+  // Depth sort: smaller (wx + wy) draws first (further from camera)
+  entities.sort((a, b) => (a.wx + a.wy) - (b.wx + b.wy));
+
+  // Draw entities
+  entities.forEach(e => {
+    if (e.type === 'workstation') drawWorkstation(t);
+    else if (e.type === 'rack') drawServerRack(e.alias, scene.servers[e.alias], t);
+    else if (e.type === 'worker') drawWorker(e.worker, t);
+  });
+
+  // Floating terminals (always on top)
+  Object.values(scene.workers).forEach(w => {
+    drawFloatingTerminal(w, t);
+  });
+
+  // Particles
+  drawParticles(dt);
+
+  // HUD overlay (screen-space, drawn last)
+  drawCronHUD(t);
+
+  requestAnimationFrame(render);
+}
+
+// ════════════════════════════════════════════════════════════════
+// ─── SERVER LAYOUT ───
+// ════════════════════════════════════════════════════════════════
+function layoutServers(servers) {
+  scene.servers = {};
+  scene.groups = {};
+
+  servers.forEach(s => {
+    scene.servers[s.alias] = { ...s, metrics: null, _active: false, _hover: false, wx: 0, wy: 0 };
+    if (!scene.groups[s.group]) scene.groups[s.group] = [];
+    scene.groups[s.group].push(s.alias);
+  });
+
+  // Sort groups by size (largest first goes to back row)
+  const sortedGroups = Object.entries(scene.groups).sort((a, b) => b[1].length - a[1].length);
+
+  const backRowY = 1;
+  const frontRowY = 5;
+  let backX = 2;
+  let frontX = 2;
+
+  sortedGroups.forEach(([group, aliases], gi) => {
+    if (gi === 0) {
+      // Largest group → back row
+      aliases.forEach(alias => {
+        scene.servers[alias].wx = backX;
+        scene.servers[alias].wy = backRowY;
+        backX += 2;
+      });
+    } else {
+      // Other groups → front row
+      aliases.forEach(alias => {
+        scene.servers[alias].wx = frontX;
+        scene.servers[alias].wy = frontRowY;
+        frontX += 2;
+      });
+    }
+  });
+
+  centerCamera();
+}
+
+// ════════════════════════════════════════════════════════════════
+// ─── INTERACTION ───
+// ════════════════════════════════════════════════════════════════
+function hitTestRack(mx, my) {
+  for (const [alias, srv] of Object.entries(scene.servers)) {
+    if (!srv._sx) continue;
+    const dx = mx - srv._sx;
+    const dy = my - srv._sy;
+    // Approximate bounding box
+    if (dx > -RACK_W / 2 - 5 && dx < RACK_W / 2 + 5 && dy > -RACK_HEIGHT - 10 && dy < 15) {
+      return alias;
+    }
+  }
+  return null;
+}
+
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const hudHit = hitTestCronHUD(mx, my);
+  const hit = hitTestRack(mx, my);
+  const workerHit = hitTestWorker(mx, my);
+  scene.hoverServer = hit;
+  canvas.style.cursor = (hit || workerHit || hudHit) ? 'pointer' : 'default';
+});
+
+function hitTestCancelButton(mx, my) {
+  for (const [id, w] of Object.entries(scene.workers)) {
+    if (!w._cancelRect) continue;
+    const r = w._cancelRect;
+    if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h) {
+      return id;
+    }
+  }
+  return null;
+}
+
+function hitTestWorker(mx, my) {
+  for (const [id, w] of Object.entries(scene.workers)) {
+    if (!w._sx) continue;
+    // Check speech bubble first (larger target)
+    if (w._bubbleRect) {
+      const r = w._bubbleRect;
+      if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h) {
+        return id;
+      }
+    }
+    const dx = mx - w._sx;
+    const dy = my - w._sy;
+    // Worker bounding box (scaled body area)
+    if (dx > -16 && dx < 16 && dy > -55 && dy < 5) {
+      return id;
+    }
+    // Also check indicator icon
+    if (w._indicatorRect) {
+      const r = w._indicatorRect;
+      if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h) {
+        return id;
+      }
+    }
+  }
+  return null;
+}
+
+canvas.addEventListener('click', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  hideCtxMenu();
+
+  // Check if clicking on Cron HUD
+  if (hitTestCronHUD(mx, my)) {
+    toggleInfoPanel('cron');
+    return;
+  }
+
+  // Check if clicking cancel button on a worker
+  const cancelHit = hitTestCancelButton(mx, my);
+  if (cancelHit) {
+    const w = scene.workers[cancelHit];
+    if (w) {
+      sendMessage({
+        type: 'cancel_task',
+        workerId: cancelHit,
+        server: w.target,
+        taskType: w.type,
+        label: w.label,
+      });
+      // Visual feedback: change bubble to cancelling
+      w.bubble = '取消中...';
+    }
+    return;
+  }
+
+  // Check if clicking on a worker or its indicator → open terminal dock
+  const workerHit = hitTestWorker(mx, my);
+  if (workerHit) {
+    openTermDock(workerHit);
+    return;
+  }
+
+  // Check if clicking on a server rack
+  const rackHit = hitTestRack(mx, my);
+  if (rackHit) {
+    // Check if there's an active worker on this rack
+    const activeWorker = Object.values(scene.workers).find(
+      w => w.target === rackHit && (w.state === 'working' || w.state === 'finished')
+    );
+    if (activeWorker && activeWorker.termLines?.length > 0) {
+      // Open its terminal in dock
+      openTermDock(activeWorker.id);
+    } else {
+      // No active worker → show context menu
+      showCtxMenu(rackHit, e.clientX, e.clientY);
+    }
+  }
+});
+
+// Right-click for context menu on racks (always shows menu regardless of worker state)
+canvas.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const hit = hitTestRack(mx, my);
+  if (hit) {
+    showCtxMenu(hit, e.clientX, e.clientY);
+  }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  scene.hoverServer = null;
+});
+
+// Context Menu
+const ctxMenu = document.getElementById('ctx-menu');
+const ctxTitle = document.getElementById('ctx-title');
+let ctxServer = null;
+
+function showCtxMenu(alias, x, y) {
+  ctxServer = alias;
+  const srv = scene.servers[alias];
+  ctxTitle.textContent = srv?.label || alias;
+  ctxMenu.style.display = 'block';
+  ctxMenu.style.left = Math.min(x, W - 160) + 'px';
+  ctxMenu.style.top = Math.min(y, H - 150) + 'px';
+}
+
+function hideCtxMenu() {
+  ctxMenu.style.display = 'none';
+  ctxServer = null;
+}
+
+// Action dialog config — defines title, placeholder, required, warn for each action
+const ACTION_DIALOG_CONFIG = {
+  check: {
+    title: '健康检查',
+    placeholder: '可选：指定额外检查项，例如：\n- 重点检查 mysql8 内存使用\n- 检查最近有无 OOM 记录\n留空则执行标准检查（CPU/内存/磁盘/Docker/端口）',
+    required: false,
+    okText: '开始检查',
+  },
+  logs: {
+    title: '查看日志',
+    placeholder: '可选：指定日志范围，例如：\n- 看最近 1 小时 Nginx 错误日志\n- 查 PM2 应用 
+    required: false,
+    okText: '查看日志',
+  },
+  deploy: null, // handled separately by showDeployConfirm
+  nginx: {
+    title: 'Nginx / SSL 配置',
+    placeholder: '请描述你要做什么，例如：\n- 添加 api.example.com 的反向代理到 3001 端口\n- 更新 SSL 证书\n- 检查 Nginx 配置状态',
+    required: true,
+    okText: '确认执行',
+    warn: '此操作可能修改 Nginx 配置文件',
+  }
+};
+
+function showActionDialog(server, action) {
+  const config = ACTION_DIALOG_CONFIG[action];
+  if (!config) return;
+
+  const srv = scene.servers[server];
+  const label = srv?.label || server;
+  const reqMark = config.required ? ' <span style="color:#ef4444">*</span>' : '';
+
+  let html = `<div>目标实体: <strong style="color:#7dd3fc">${escapeHtml(server)}</strong></div>`;
+  html += `<div class="deploy-form-section" style="border:none;padding-top:6px;">`;
+  html += `<label class="deploy-form-label">操作指令${reqMark}</label>`;
+  html += `<textarea class="deploy-form-textarea" id="action-instructions" placeholder="${escapeHtml(config.placeholder)}" style="min-height:80px"></textarea>`;
+  if (!config.required) html += `<div class="deploy-form-hint">留空则使用默认检查项</div>`;
+  html += `</div>`;
+  if (config.warn) html += `<div class="warn-text">&#9888; ${config.warn}</div>`;
+
+  showConfirm(config.title, html, config.okText, () => {
+    const instructions = document.getElementById('action-instructions')?.value?.trim() || '';
+    if (config.required && !instructions) {
+      showActionToast('请填写操作指令');
+      return;
+    }
+    const msg = { type: 'server_action', server, action };
+    if (instructions) msg.instructions = instructions;
+    sendMessage(msg);
+    showActionToast(`${server}: ${config.title} 已发送`);
+  });
+}
+
+document.querySelectorAll('#ctx-menu .ctx-item').forEach(item => {
+  item.addEventListener('click', () => {
+    if (!ctxServer) return;
+    const action = item.dataset.action;
+    const server = ctxServer;
+    hideCtxMenu();
+
+    // Deploy uses its own dialog
+    if (action === 'deploy') {
+      showDeployConfirm(server);
+      return;
+    }
+
+    // All other actions use the generic action dialog
+    showActionDialog(server, action);
+  });
+});
+
+document.addEventListener('click', (e) => {
+  if (!ctxMenu.contains(e.target) && e.target !== canvas) hideCtxMenu();
+});
+
+// Action buttons
+const actionToast = document.getElementById('action-toast');
+let actionToastTimer = null;
+function showActionToast(text) {
+  actionToast.textContent = text;
+  actionToast.classList.add('show');
+  clearTimeout(actionToastTimer);
+  actionToastTimer = setTimeout(() => actionToast.classList.remove('show'), 2000);
+}
+
+// ════════════════════════════════════════════════════════════════
+// ─── HISTORY PANEL ───
+// ════════════════════════════════════════════════════════════════
+const historyPanel = document.getElementById('history-panel');
+const historyList = document.getElementById('history-list');
+const historyToggleBtn = document.getElementById('history-toggle');
+const historyCloseBtn = document.getElementById('history-close');
+const filterBtn = document.getElementById('filter-btn');
+const filterDropdown = document.getElementById('filter-dropdown');
+let historyData = [];
+let historyFilter = 'all';
+let historyLoaded = false;
+
+function toggleHistoryPanel() {
+  const isOpen = historyPanel.classList.toggle('open');
+  document.body.classList.toggle('history-open', isOpen);
+  historyToggleBtn.classList.toggle('active', isOpen);
+  // Also sync bottom bar button
+  const histBtn = document.querySelector('.action-btn[data-action="toggle-history"]');
+  if (histBtn) histBtn.classList.toggle('active', isOpen);
+  if (isOpen && !historyLoaded) {
+    loadHistory();
+  }
+}
+
+function closeHistoryPanel() {
+  historyPanel.classList.remove('open');
+  document.body.classList.remove('history-open');
+  historyToggleBtn.classList.remove('active');
+  const histBtn = document.querySelector('.action-btn[data-action="toggle-history"]');
+  if (histBtn) histBtn.classList.remove('active');
+}
+
+historyToggleBtn.addEventListener('click', toggleHistoryPanel);
+historyCloseBtn.addEventListener('click', closeHistoryPanel);
+
+// Filter
+filterBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  filterDropdown.classList.toggle('open');
+});
+document.addEventListener('click', (e) => {
+  if (!filterDropdown.contains(e.target) && e.target !== filterBtn) {
+    filterDropdown.classList.remove('open');
+  }
+});
+document.querySelectorAll('.filter-option').forEach(opt => {
+  opt.addEventListener('click', () => {
+    historyFilter = opt.dataset.filter;
+    document.querySelectorAll('.filter-option').forEach(o => o.classList.remove('active'));
+    opt.classList.add('active');
+    filterBtn.textContent = opt.textContent;
+    filterDropdown.classList.remove('open');
+    renderHistory();
+  });
+});
+
+async function loadHistory() {
+  try {
+    const resp = await fetch('/api/history?limit=50');
+    const data = await resp.json();
+    historyData = data.history || [];
+    historyLoaded = true;
+    renderHistory();
+  } catch (e) { /* ignore */ }
+}
+
+function addHistoryEntry(entry) {
+  // Prepend (newest first)
+  historyData.unshift(entry);
+  if (historyData.length > 200) historyData.pop();
+  if (historyPanel.classList.contains('open')) {
+    renderHistory();
+  }
+}
+
+const HISTORY_TYPE_COLORS = {
+  'health-check': '#3b82f6',
+  'deploy': '#10b981',
+  'logs': '#f59e0b',
+  'analyze-logs': '#f59e0b',
+  'nginx': '#f97316',
+  'manage-nginx-ssl': '#f97316',
+};
+
+function renderHistory() {
+  const filtered = historyData.filter(h => {
+    if (historyFilter === 'all') return true;
+    if (historyFilter === 'success') return h.result === 'success';
+    if (historyFilter === 'error') return h.result === 'error' || h.result === 'cancelled';
+    // type filters
+    if (historyFilter === 'logs') return h.type === 'logs' || h.type === 'analyze-logs';
+    if (historyFilter === 'nginx') return h.type === 'nginx' || h.type === 'manage-nginx-ssl';
+    return h.type === historyFilter;
+  });
+
+  if (filtered.length === 0) {
+    historyList.innerHTML = '<div class="history-empty">暂无操作记录</div>';
+    return;
+  }
+
+  historyList.innerHTML = filtered.map(h => {
+    const time = new Date(h.endTime || h.startTime).toTimeString().slice(0, 5);
+    const dotColor = HISTORY_TYPE_COLORS[h.type] || '#64748b';
+    const resultIcon = h.result === 'success' ? '&#10003;' : h.result === 'cancelled' ? '&#9744;' : '&#10007;';
+    const resultClass = h.result === 'success' ? 'success' : h.result === 'cancelled' ? 'cancelled' : 'error';
+    const durationText = h.duration ? h.duration + 's' : '';
+    const termHtml = (h.termLines || []).map(l => {
+      const cls = l.type === 'command' ? 'command' : l.type === 'error' ? 'error' : 'output';
+      return `<div class="history-term-line ${cls}">${escapeHtml(l.text)}</div>`;
+    }).join('');
+    const summaryHtml = h.summary ? `<div class="history-summary">${escapeHtml(h.summary)}</div>` : '';
+
+    return `<div class="history-card" data-id="${h.id}" data-server="${h.server}">
+      <div class="history-card-header">
+        <span class="time">${time}</span>
+        <span class="type-dot" style="background:${dotColor}"></span>
+        <span class="server">${escapeHtml(h.server)}</span>
+        <span class="label">${escapeHtml(h.label)}</span>
+        <span class="result ${resultClass}">${resultIcon}</span>
+        <span class="duration">${durationText}</span>
+      </div>
+      <div class="history-card-detail">${termHtml}${summaryHtml}</div>
+    </div>`;
+  }).join('');
+
+  // Click to expand/collapse
+  historyList.querySelectorAll('.history-card').forEach(card => {
+    card.addEventListener('click', () => card.classList.toggle('expanded'));
+    // Click server name to highlight rack
+    const serverSpan = card.querySelector('.server');
+    if (serverSpan) {
+      serverSpan.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const alias = card.dataset.server;
+        highlightRack(alias);
+      });
+    }
+  });
+}
+
+function escapeHtml(text) {
+  const d = document.createElement('div');
+  d.textContent = text || '';
+  return d.innerHTML;
+}
+
+let _highlightAlias = null;
+let _highlightEnd = 0;
+function highlightRack(alias) {
+  _highlightAlias = alias;
+  _highlightEnd = performance.now() + 2000;
+}
+
+// ════════════════════════════════════════════════════════════════
+// ─── CONFIRM DIALOG ───
+// ════════════════════════════════════════════════════════════════
+const confirmOverlay = document.getElementById('confirm-overlay');
+const confirmTitle = document.getElementById('confirm-title');
+const confirmBody = document.getElementById('confirm-body');
+const confirmOkBtn = document.getElementById('confirm-ok');
+const confirmCancelBtn = document.getElementById('confirm-cancel');
+const confirmCloseBtn = document.getElementById('confirm-close-btn');
+let confirmCallback = null;
+
+function showConfirm(title, bodyHtml, okText, onConfirm) {
+  confirmTitle.textContent = title;
+  confirmBody.innerHTML = bodyHtml;
+  confirmOkBtn.textContent = okText;
+  confirmCallback = onConfirm;
+  confirmOverlay.classList.add('open');
+}
+
+function hideConfirm() {
+  confirmOverlay.classList.remove('open');
+  confirmCallback = null;
+}
+
+confirmOkBtn.addEventListener('click', () => {
+  if (confirmCallback) confirmCallback();
+  hideConfirm();
+});
+confirmCancelBtn.addEventListener('click', hideConfirm);
+confirmCloseBtn.addEventListener('click', hideConfirm);
+confirmOverlay.addEventListener('click', (e) => {
+  if (e.target === confirmOverlay) hideConfirm();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && confirmOverlay.classList.contains('open')) hideConfirm();
+});
+
+// ════════════════════════════════════════════════════════════════
+// ─── DEPLOY SELECT PANEL ───
+// ════════════════════════════════════════════════════════════════
+function showDeployConfirm(preselectedServer) {
+  const groups = scene.groups;
+  const servers = scene.servers;
+  let html = '<div>选择目标实体：</div><br>';
+
+  // Build grouped checkboxes
+  const groupNames = Object.keys(groups);
+  groupNames.forEach(group => {
+    const aliases = groups[group];
+    const groupLabel = group.charAt(0).toUpperCase() + group.slice(1);
+    html += `<div class="deploy-group">`;
+    html += `<div class="deploy-group-label">${escapeHtml(groupLabel)}</div>`;
+    html += `<div class="deploy-checks">`;
+    aliases.forEach(alias => {
+      const checked = (preselectedServer === alias) ? 'checked' : '';
+      html += `<label class="deploy-check"><input type="checkbox" value="${alias}" ${checked}/>${alias}</label>`;
+    });
+    html += `</div></div>`;
+  });
+
+  // Quick select buttons
+  html += `<div class="deploy-select-actions">`;
+  html += `<button class="deploy-select-btn" onclick="deploySelectProd()">全选生产</button>`;
+  html += `<button class="deploy-select-btn" onclick="deploySelectAll()">全选</button>`;
+  html += `<button class="deploy-select-btn" onclick="deploySelectNone()">取消全选</button>`;
+  html += `</div>`;
+
+  // Deploy form fields
+  html += `<div class="deploy-form-section">`;
+  html += `<label class="deploy-form-label">部署指令 <span style="color:#ef4444">*</span></label>`;
+  html += `<textarea class="deploy-form-textarea" id="deploy-instructions" placeholder="描述你要做什么，例如：&#10;- 更新 "></textarea>`;
+  html += `<div class="deploy-form-hint">Claude 会根据这段指令执行部署操作</div>`;
+  html += `<div class="deploy-form-row" style="margin-top:8px;">`;
+  html += `<div style="flex:1"><label class="deploy-form-label">项目名称（可选）</label>`;
+  html += `<input class="deploy-form-input" id="deploy-project" placeholder="如：" /></div>`;
+  html += `<div style="flex:1"><label class="deploy-form-label">分支（可选）</label>`;
+  html += `<input class="deploy-form-input" id="deploy-branch" placeholder="默认：当前分支" /></div>`;
+  html += `</div>`;
+  html += `</div>`;
+
+  html += `<div class="warn-text">&#9888; 部署将根据指令执行操作，可能导致服务短暂中断</div>`;
+
+  showConfirm('批量部署', html, '确认部署', () => {
+    const checked = Array.from(confirmBody.querySelectorAll('input[type="checkbox"]:checked'));
+    const selected = checked.map(cb => cb.value);
+    if (selected.length === 0) {
+      showActionToast('未选择任何实体');
+      return;
+    }
+    const instructions = document.getElementById('deploy-instructions')?.value?.trim();
+    if (!instructions) {
+      showActionToast('请填写部署指令');
+      return;
+    }
+    const project = document.getElementById('deploy-project')?.value?.trim() || '';
+    const branch = document.getElementById('deploy-branch')?.value?.trim() || '';
+    sendMessage({
+      type: 'quick_action', action: 'deploy-all',
+      servers: selected, instructions, project, branch
+    });
+    showActionToast(`部署指令已发送，目标：${selected.length} 个实体`);
+  });
+
+  // Update ok button text with count
+  updateDeployCount();
+}
+
+function updateDeployCount() {
+  const checked = confirmBody.querySelectorAll('input[type="checkbox"]:checked');
+  confirmOkBtn.textContent = `确认部署 (${checked.length})`;
+}
+
+// Global helper functions for deploy select buttons
+window.deploySelectProd = function() {
+  confirmBody.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    const alias = cb.value;
+    const srv = scene.servers[alias];
+    cb.checked = (srv?.tags || []).includes('production');
+  });
+  updateDeployCount();
+};
+window.deploySelectAll = function() {
+  confirmBody.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true);
+  updateDeployCount();
+};
+window.deploySelectNone = function() {
+  confirmBody.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+  updateDeployCount();
+};
+
+// ════════════════════════════════════════════════════════════════
+// ─── ACTION BUTTONS (REFACTORED) ───
+// ════════════════════════════════════════════════════════════════
+document.querySelectorAll('.action-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const action = btn.dataset.action;
+
+    if (action === 'toggle-history') {
+      toggleHistoryPanel();
+      return;
+    }
+
+    if (action === 'toggle-cron') { toggleInfoPanel('cron'); return; }
+    if (action === 'toggle-memory') { toggleInfoPanel('memory'); return; }
+    if (action === 'toggle-skills') { toggleInfoPanel('skills'); return; }
+
+    if (action === 'deploy-all') {
+      showDeployConfirm();
+      return;
+    }
+
+    if (action === 'check-warning') {
+      // Check if there are any warning/critical servers first
+      const warnServers = Object.values(scene.servers).filter(s => {
+        const st = s.metrics?.status;
+        return st === 'warning' || st === 'critical';
+      });
+      if (warnServers.length === 0) {
+        showActionToast('所有实体状态正常，无需检查');
+        btn.classList.add('btn-sent');
+        setTimeout(() => btn.classList.remove('btn-sent'), 600);
+        return;
+      }
+      sendMessage({ type: 'quick_action', action: 'check-warning' });
+      btn.classList.add('btn-sent');
+      setTimeout(() => btn.classList.remove('btn-sent'), 600);
+      showActionToast(`开始检查 ${warnServers.length} 个异常实体...`);
+      return;
+    }
+
+    // Default: check-all and other actions
+    sendMessage({ type: 'quick_action', action });
+    btn.classList.add('btn-sent');
+    setTimeout(() => btn.classList.remove('btn-sent'), 600);
+    const total = Object.keys(scene.servers).length;
+    if (action === 'check-all') {
+      showActionToast(`巡检指令已发送，开始检查 ${total} 个实体...`);
+    } else {
+      showActionToast('指令已发送，等待 Claude 响应...');
+    }
+  });
+});
+
+// Observe checkbox changes in deploy dialog for count update
+document.addEventListener('change', (e) => {
+  if (e.target.closest('#confirm-body') && e.target.type === 'checkbox') {
+    updateDeployCount();
+  }
+});
+
+// Text input
+const cmdInput = document.getElementById('cmd-input');
+const cmdSend = document.getElementById('cmd-send');
+
+function submitCmd() {
+  const text = cmdInput.value.trim();
+  if (!text) return;
+  sendMessage({ type: 'text', text });
+  cmdInput.value = '';
+  showActionToast('指令已发送: ' + (text.length > 20 ? text.slice(0, 20) + '...' : text));
+}
+
+cmdSend.addEventListener('click', submitCmd);
+cmdInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitCmd(); });
+
+// ════════════════════════════════════════════════════════════════
+// ─── TERMINAL DOCK PANEL ───
+// ════════════════════════════════════════════════════════════════
+const termDock = document.getElementById('terminal-dock');
+const termDockBody = document.getElementById('term-dock-body');
+const termTabs = document.getElementById('term-tabs');
+const termDockClose = document.getElementById('term-dock-close');
+const termResizeHandle = document.getElementById('term-resize-handle');
+let activeTermTab = null; // workerId of active tab
+
+function openTermDock(workerId) {
+  termDock.classList.add('open');
+  document.body.classList.add('terminal-open');
+  resizeCanvas();
+  switchTermTab(workerId);
+}
+
+function closeTermDock() {
+  termDock.classList.remove('open');
+  document.body.classList.remove('terminal-open');
+  activeTermTab = null;
+  resizeCanvas();
+}
+
+function switchTermTab(workerId) {
+  activeTermTab = workerId;
+  renderTermTabs();
+  renderTermContent();
+}
+
+function renderTermTabs() {
+  const workers = scene.workers;
+  // Show tabs for all workers with termLines
+  const ids = Object.keys(workers).filter(id => {
+    const w = workers[id];
+    return w.termLines && w.termLines.length > 0 && (w.state === 'working' || w.state === 'finished');
+  });
+
+  if (ids.length === 0) {
+    termTabs.innerHTML = '';
+    termDockBody.innerHTML = '<div class="term-dock-empty">等待操作...</div>';
+    return;
+  }
+
+  // If activeTermTab is not in list, pick first
+  if (!ids.includes(activeTermTab)) activeTermTab = ids[0];
+
+  termTabs.innerHTML = ids.map(id => {
+    const w = workers[id];
+    const typeCol = WORKER_TYPE_COLORS[w.type] || '#3b82f6';
+    const isActive = id === activeTermTab;
+    const statusIcon = w.state === 'working' ? '⟳' : (w.result === 'success' ? '✓' : '✗');
+    return `<button class="term-dock-tab${isActive ? ' active' : ''}" data-wid="${id}">` +
+      `<span class="tab-dot" style="background:${typeCol}"></span>` +
+      `${w.target} — ${w.label}` +
+      `<span style="color:${w.result === 'error' ? '#f85149' : '#7ee787'};font-size:9px">${statusIcon}</span>` +
+      `</button>`;
+  }).join('');
+
+  // Tab click handlers
+  termTabs.querySelectorAll('.term-dock-tab').forEach(tab => {
+    tab.addEventListener('click', () => switchTermTab(tab.dataset.wid));
+  });
+}
+
+function renderTermContent() {
+  const w = scene.workers[activeTermTab];
+  if (!w || !w.termLines || w.termLines.length === 0) {
+    termDockBody.innerHTML = '<div class="term-dock-empty">等待操作...</div>';
+    return;
+  }
+
+  const lines = w.termLines;
+  let html = lines.map(line => {
+    const escaped = escapeHtml(line.text || '');
+    if (line.type === 'command') return `<div class="term-line-cmd">${escaped}</div>`;
+    if (line.type === 'error') return `<div class="term-line-err">${escaped}</div>`;
+    return `<div class="term-line-out">${escaped}</div>`;
+  }).join('');
+
+  if (w.state === 'working') html += '<div><span class="term-cursor"></span></div>';
+  termDockBody.innerHTML = html;
+  termDockBody.scrollTop = termDockBody.scrollHeight;
+}
+
+termDockClose.addEventListener('click', closeTermDock);
+
+// Resize handle
+let termResizing = false;
+let termStartY = 0;
+let termStartH = 200;
+termResizeHandle.addEventListener('mousedown', (e) => {
+  termResizing = true;
+  termStartY = e.clientY;
+  termStartH = termDock.offsetHeight;
+  e.preventDefault();
+});
+document.addEventListener('mousemove', (e) => {
+  if (!termResizing) return;
+  const newH = Math.min(Math.max(termStartH + (termStartY - e.clientY), 100), window.innerHeight * 0.6);
+  termDock.style.height = newH + 'px';
+  // Also update body class for canvas resize
+  document.documentElement.style.setProperty('--term-dock-h', newH + 'px');
+});
+document.addEventListener('mouseup', () => { termResizing = false; });
+
+// ════════════════════════════════════════════════════════════════
+// ─── WEBSOCKET CLIENT ───
+// ════════════════════════════════════════════════════════════════
+let ws = null;
+let wsReconnectDelay = 1000;
+const wsMaxDelay = 30000;
+const wsToast = document.getElementById('ws-toast');
+
+function wsConnect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+
+  ws.onopen = () => {
+    wsReconnectDelay = 1000;
+    showWsToast('Dashboard 已连接', 'ok');
+    setTimeout(() => { wsToast.style.display = 'none'; }, 2000);
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      handleWsMessage(msg);
+    } catch (err) { /* ignore */ }
+  };
+
+  ws.onclose = () => {
+    updateClaudeStatus('disconnected');
+    showWsToast('连接断开，重连中...', 'error');
+    setTimeout(wsConnect, wsReconnectDelay);
+    wsReconnectDelay = Math.min(wsReconnectDelay * 2, wsMaxDelay);
+  };
+
+  ws.onerror = () => { ws.close(); };
+}
+
+function sendMessage(data) {
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'user_message', data }));
+  }
+}
+
+function showWsToast(text, type) {
+  wsToast.textContent = text;
+  wsToast.className = type;
+}
+
+function handleWsMessage(msg) {
+  switch (msg.type) {
+    case 'full_state': {
+      // Restore full state from server
+      if (msg.data.servers && Object.keys(msg.data.servers).length > 0) {
+        const serverList = Object.values(msg.data.servers);
+        layoutServers(serverList);
+        // Restore metrics
+        Object.entries(msg.data.servers).forEach(([alias, srv]) => {
+          if (srv.metrics && scene.servers[alias]) {
+            scene.servers[alias].metrics = srv.metrics;
+          }
+        });
+      }
+      // Restore workers — only keep active ones (walking/working)
+      if (msg.data.workers) {
+        Object.entries(msg.data.workers).forEach(([id, w]) => {
+          if (w.state === 'walking' || w.state === 'working') {
+            scene.workers[id] = {
+              ...w,
+              wx: w.wx ?? scene.servers[w.target]?.wx ?? WORKSTATION.wx,
+              wy: w.wy ?? scene.servers[w.target]?.wy ?? WORKSTATION.wy,
+              dir: w.dir || 'SE',
+              termLines: w.termLines || [],
+            };
+          }
+        });
+      }
+      updateClaudeStatus(msg.data.claudeStatus || 'idle');
+      if (msg.data.operation) {
+        updateOpBanner(msg.data.operation.description, msg.data.operation.type);
+      }
+      break;
+    }
+    case 'init_servers': {
+      layoutServers(msg.servers);
+      break;
+    }
+    case 'server_status': {
+      if (scene.servers[msg.alias]) {
+        scene.servers[msg.alias].metrics = msg.metrics;
+      }
+      updateStats();
+      break;
+    }
+    case 'worker_spawn': {
+      const w = msg.worker;
+      scene.workers[w.id] = {
+        ...w,
+        wx: WORKSTATION.wx, wy: WORKSTATION.wy,
+        dir: 'SE', bubble: '', termLines: w.termLines || [],
+        avatarIdx: avatarCounter++,
+      };
+      break;
+    }
+    case 'worker_say': {
+      if (scene.workers[msg.workerId]) {
+        scene.workers[msg.workerId].bubble = msg.text;
+      }
+      break;
+    }
+    case 'term_write': {
+      if (scene.workers[msg.workerId]) {
+        scene.workers[msg.workerId].termLines.push({ type: msg.termType, text: msg.text });
+        const lines = scene.workers[msg.workerId].termLines;
+        if (lines.length > 200) scene.workers[msg.workerId].termLines = lines.slice(-100);
+        // Auto-open terminal dock panel on new data
+        openTermDock(msg.workerId);
+      }
+      break;
+    }
+    case 'worker_done': {
+      if (scene.workers[msg.workerId]) {
+        scene.workers[msg.workerId].state = 'finished';
+        scene.workers[msg.workerId].result = msg.result;
+        // Update terminal dock tabs to reflect completion
+        if (termDock.classList.contains('open')) renderTermTabs();
+        if (activeTermTab === msg.workerId) renderTermContent();
+      }
+      break;
+    }
+    case 'worker_remove': {
+      if (scene.workers[msg.workerId]) {
+        scene.workers[msg.workerId].state = 'walking_back';
+        const target = scene.servers[scene.workers[msg.workerId].target];
+        if (target) target._active = false;
+      }
+      break;
+    }
+    case 'operation': {
+      updateOpBanner(msg.description, msg.opType);
+      break;
+    }
+    case 'progress': {
+      updateProgress(msg.current, msg.total, msg.label);
+      break;
+    }
+    case 'claude_status': {
+      updateClaudeStatus(msg.status);
+      break;
+    }
+    case 'history_add': {
+      if (msg.entry) {
+        addHistoryEntry(msg.entry);
+      }
+      break;
+    }
+    case 'cron_status': {
+      cronData = { tasks: msg.tasks || [] };
+      // Update panel if open
+      if (activeInfoPanel === 'cron') renderCronPanel();
+      break;
+    }
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// ─── UI UPDATES ───
+// ════════════════════════════════════════════════════════════════
+const claudeDot = document.getElementById('claude-dot');
+const claudeLabel = document.getElementById('claude-label');
+const opBanner = document.getElementById('op-banner');
+const progressBar = document.getElementById('progress-bar');
+const progressFill = progressBar.querySelector('.fill');
+
+function updateClaudeStatus(status) {
+  scene.claudeStatus = status;
+  claudeDot.className = 'status-dot ' + (status === 'connected' ? 'connected' :
+    status === 'working' ? 'working' : 'disconnected');
+  const labels = { connected: '已连接', working: '工作中', idle: '空闲', disconnected: '未连接' };
+  claudeLabel.textContent = labels[status] || status;
+}
+
+function updateOpBanner(desc, type) {
+  if (desc) {
+    opBanner.textContent = desc;
+    opBanner.className = 'operation-banner active';
+  } else {
+    opBanner.textContent = '就绪，等待操作...';
+    opBanner.className = 'operation-banner';
+  }
+}
+
+function updateProgress(current, total, label) {
+  if (current != null && total) {
+    progressBar.className = 'active';
+    progressFill.style.width = (current / total * 100) + '%';
+  } else {
+    progressBar.className = '';
+    progressFill.style.width = '0%';
+  }
+}
+
+function updateStats() {
+  let ok = 0, warn = 0, crit = 0, total = 0;
+  Object.values(scene.servers).forEach(s => {
+    total++;
+    const st = s.metrics?.status;
+    if (st === 'ok') ok++;
+    else if (st === 'warning') warn++;
+    else if (st === 'critical') crit++;
+  });
+  document.getElementById('stat-ok').innerHTML = `&#9679; ${ok}`;
+  document.getElementById('stat-warn').innerHTML = `&#9679; ${warn}`;
+  document.getElementById('stat-crit').innerHTML = `&#9679; ${crit}`;
+  document.getElementById('stat-total').innerHTML = `&#9632; ${total}`;
+}
+
+// ════════════════════════════════════════════════════════════════
+// ─── INFO PANELS (Cron / Memory / Skills) ───
+// ════════════════════════════════════════════════════════════════
+let activeInfoPanel = null; // 'cron' | 'memory' | 'skills' | null
+let cronData = { tasks: [] };
+
+const SKILL_ICONS = {
+  'server-health-check': '🔍', 'deploy-project': '🚀',
+  'analyze-logs': '📋', 'manage-nginx-ssl': '🔒',
+  'manage-docker': '🐳', 'manage-cloudflare': '☁️',
+  'backup-restore': '💾', 'manage-firewall': '🛡️',
+};
+
+function toggleInfoPanel(name) {
+  const panelEl = document.getElementById(name + '-panel');
+  if (!panelEl) return;
+
+  // Close history if open
+  if (historyPanel.classList.contains('open')) closeHistoryPanel();
+
+  if (activeInfoPanel === name) {
+    // Close current
+    panelEl.classList.remove('open');
+    document.body.classList.remove('panel-open');
+    activeInfoPanel = null;
+    syncPanelButtons();
+    return;
+  }
+
+  // Close previous info panel
+  if (activeInfoPanel) {
+    const prev = document.getElementById(activeInfoPanel + '-panel');
+    if (prev) prev.classList.remove('open');
+  }
+
+  activeInfoPanel = name;
+  panelEl.classList.add('open');
+  document.body.classList.add('panel-open');
+  syncPanelButtons();
+
+  // Fetch data
+  if (name === 'cron') fetchCronData();
+  else if (name === 'memory') fetchMemoryData();
+  else if (name === 'skills') fetchSkillsData();
+}
+
+function closeInfoPanel(name) {
+  const panelEl = document.getElementById(name + '-panel');
+  if (panelEl) panelEl.classList.remove('open');
+  if (activeInfoPanel === name) {
+    activeInfoPanel = null;
+    document.body.classList.remove('panel-open');
+  }
+  syncPanelButtons();
+}
+
+function syncPanelButtons() {
+  ['cron', 'memory', 'skills'].forEach(n => {
+    const btn = document.querySelector(`.action-btn[data-action="toggle-${n}"]`);
+    if (btn) btn.classList.toggle('active', activeInfoPanel === n);
+  });
+}
+
+// Close buttons in panel headers
+document.querySelectorAll('.info-panel-close').forEach(btn => {
+  btn.addEventListener('click', () => closeInfoPanel(btn.dataset.panel));
+});
+
+// Override toggleHistoryPanel to also close info panels
+const _origToggleHistory = toggleHistoryPanel;
+toggleHistoryPanel = function() {
+  if (activeInfoPanel) {
+    const prev = document.getElementById(activeInfoPanel + '-panel');
+    if (prev) prev.classList.remove('open');
+    activeInfoPanel = null;
+    document.body.classList.remove('panel-open');
+    syncPanelButtons();
+  }
+  _origToggleHistory();
+};
+
+// ─── Cron Data ───
+async function fetchCronData() {
+  try {
+    const resp = await fetch('/api/cron/status');
+    const data = await resp.json();
+    cronData = data;
+    renderCronPanel();
+  } catch { renderCronPanel(); }
+}
+
+function renderCronPanel() {
+  const body = document.getElementById('cron-panel-body');
+  const tasks = cronData.tasks || [];
+  if (tasks.length === 0) {
+    body.innerHTML = '<div class="info-panel-empty">无定时任务</div>';
+    return;
+  }
+  body.innerHTML = tasks.map(t => {
+    const dotCls = t.running ? 'running' : 'stopped';
+    const statusText = t.running ? '运行中' : '已停止';
+    const intervalText = t.interval >= 3600 ? (t.interval / 3600) + 'h' : t.interval + 's';
+    let detailHtml = `<div class="cron-detail"><span>状态：</span><span class="val">${statusText}</span></div>`;
+    detailHtml += `<div class="cron-detail"><span>间隔：</span><span class="val">${intervalText}</span></div>`;
+    if (t.pid) detailHtml += `<div class="cron-detail"><span>PID：</span><span class="val">${t.pid}</span></div>`;
+    if (t.lastCheck) detailHtml += `<div class="cron-detail"><span>上次执行：</span><span class="val">${t.lastCheck}</span></div>`;
+    if (t.nextCheck) detailHtml += `<div class="cron-detail"><span>下次执行：</span><span class="val">${t.nextCheck}</span></div>`;
+    return `<div class="cron-card">
+      <div class="cron-card-top">
+        <span class="cron-dot ${dotCls}"></span>
+        <span class="cron-name">${escapeHtml(t.name)}</span>
+        ${t.pid ? `<span class="cron-pid">PID:${t.pid}</span>` : ''}
+      </div>
+      ${detailHtml}
+    </div>`;
+  }).join('');
+}
+
+// ─── Memory Data ───
+async function fetchMemoryData() {
+  try {
+    const resp = await fetch('/api/memory');
+    const data = await resp.json();
+    renderMemoryPanel(data.memories || []);
+  } catch { renderMemoryPanel([]); }
+}
+
+function renderMemoryPanel(memories) {
+  const body = document.getElementById('memory-panel-body');
+  if (memories.length === 0) {
+    body.innerHTML = '<div class="info-panel-empty">无实体记忆文件</div>';
+    return;
+  }
+  body.innerHTML = memories.map(m => {
+    const issueCount = (m.issues || []).length;
+    const badgeHtml = issueCount > 0
+      ? `<span class="mem-badge issues">${issueCount} 问题</span>`
+      : `<span class="mem-badge clean">正常</span>`;
+    const issuesHtml = (m.issues || []).map(i => `<div class="mem-issue-item">${escapeHtml(i)}</div>`).join('');
+    let detailHtml = '';
+    if (m.os) detailHtml += `<div><span class="mem-label">OS：</span>${escapeHtml(m.os)}</div>`;
+    if (m.cpu) detailHtml += `<div><span class="mem-label">CPU：</span>${escapeHtml(m.cpu)}</div>`;
+    if (m.memory) detailHtml += `<div><span class="mem-label">内存：</span>${escapeHtml(m.memory)}</div>`;
+    if (m.lastOp) detailHtml += `<div><span class="mem-label">最后操作：</span>${escapeHtml(m.lastOp)}</div>`;
+    if (issuesHtml) detailHtml += `<div style="margin-top:6px;"><span class="mem-label">已知问题：</span>${issuesHtml}</div>`;
+    return `<div class="mem-card" data-alias="${escapeHtml(m.alias)}">
+      <div class="mem-card-header">
+        <span class="mem-alias">${escapeHtml(m.alias)}</span>
+        <span class="mem-os">${escapeHtml(m.os || '')}</span>
+        <div class="mem-badges">${badgeHtml}</div>
+      </div>
+      <div class="mem-card-detail">${detailHtml || '<div class="info-panel-empty">无详细信息</div>'}</div>
+    </div>`;
+  }).join('');
+
+  body.querySelectorAll('.mem-card').forEach(card => {
+    card.addEventListener('click', () => card.classList.toggle('expanded'));
+  });
+}
+
+// ─── Skills Data ───
+async function fetchSkillsData() {
+  try {
+    const resp = await fetch('/api/skills');
+    const data = await resp.json();
+    renderSkillsPanel(data.skills || []);
+  } catch { renderSkillsPanel([]); }
+}
+
+function renderSkillsPanel(skills) {
+  const body = document.getElementById('skills-panel-body');
+  if (skills.length === 0) {
+    body.innerHTML = '<div class="info-panel-empty">无可用技能</div>';
+    return;
+  }
+  body.innerHTML = skills.map(s => {
+    const icon = SKILL_ICONS[s.name] || '🔧';
+    return `<div class="skill-item" data-skill="${escapeHtml(s.name)}">
+      <span class="skill-icon">${icon}</span>
+      <div class="skill-info">
+        <div class="skill-name">/${escapeHtml(s.name)}</div>
+        <div class="skill-desc">${escapeHtml(s.description || '')}</div>
+      </div>
+      <span class="skill-arrow">›</span>
+    </div>`;
+  }).join('');
+
+  body.querySelectorAll('.skill-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const name = item.dataset.skill;
+      cmdInput.value = '/' + name + ' ';
+      cmdInput.focus();
+      showActionToast('已填入 /' + name);
+    });
+  });
+}
+
+// ─── Canvas HUD: Cron Monitor ───
+let cronHudRect = null; // for hit testing
+
+function drawCronHUD(t) {
+  const tasks = cronData.tasks || [];
+  if (tasks.length === 0) return;
+
+  const hudX = W - 12;
+  const lineH = 16;
+  const hudH = 26 + tasks.length * lineH + 8;
+  const hudW = 160;
+  const rx = hudX - hudW;
+  const ry = 8;
+
+  // CRT monitor frame
+  ctx.save();
+
+  // Outer frame
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+  ctx.beginPath();
+  ctx.roundRect(rx - 4, ry - 4, hudW + 8, hudH + 8, 6);
+  ctx.fill();
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Inner screen
+  ctx.fillStyle = 'rgba(10, 14, 23, 0.95)';
+  ctx.beginPath();
+  ctx.roundRect(rx, ry, hudW, hudH, 4);
+  ctx.fill();
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
+
+  // Scanline effect
+  ctx.globalAlpha = 0.03;
+  ctx.fillStyle = '#7dd3fc';
+  for (let sl = ry; sl < ry + hudH; sl += 3) {
+    ctx.fillRect(rx, sl, hudW, 1);
+  }
+  ctx.globalAlpha = 1;
+
+  // Title
+  ctx.font = 'bold 10px monospace';
+  ctx.fillStyle = '#475569';
+  ctx.textAlign = 'left';
+  ctx.fillText('CRON MONITOR', rx + 8, ry + 14);
+
+  // Separator
+  ctx.strokeStyle = '#1e293b';
+  ctx.beginPath();
+  ctx.moveTo(rx + 6, ry + 20);
+  ctx.lineTo(rx + hudW - 6, ry + 20);
+  ctx.stroke();
+
+  // Tasks
+  tasks.forEach((task, i) => {
+    const ty = ry + 28 + i * lineH;
+
+    // Status dot
+    const dotColor = task.running ? '#10b981' : '#ef4444';
+    const glowAlpha = task.running ? (0.6 + Math.sin(t / 600 + i) * 0.4) : 1;
+    ctx.globalAlpha = glowAlpha;
+    ctx.fillStyle = dotColor;
+    ctx.beginPath();
+    ctx.arc(rx + 14, ty, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Glow
+    if (task.running) {
+      ctx.globalAlpha = 0.2 * glowAlpha;
+      ctx.beginPath();
+      ctx.arc(rx + 14, ty, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.globalAlpha = 1;
+
+    // Task name
+    ctx.font = '10px monospace';
+    ctx.fillStyle = '#94a3b8';
+    const intervalText = task.interval >= 3600 ? (task.interval / 3600) + 'h' : task.interval + 's';
+    const shortName = (task.name || '').length > 10 ? task.name.slice(0, 10) + '..' : task.name;
+    ctx.fillText(`${shortName}`, rx + 24, ty + 3);
+
+    // Interval
+    ctx.fillStyle = '#475569';
+    ctx.textAlign = 'right';
+    ctx.fillText(intervalText, rx + hudW - 8, ty + 3);
+    ctx.textAlign = 'left';
+  });
+
+  ctx.restore();
+
+  // Store hit rect
+  cronHudRect = { x: rx - 4, y: ry - 4, w: hudW + 8, h: hudH + 8 };
+}
+
+// HUD hit test
+function hitTestCronHUD(mx, my) {
+  if (!cronHudRect) return false;
+  const r = cronHudRect;
+  return mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h;
+}
+
+// ════════════════════════════════════════════════════════════════
+// ─── INIT ───
+// ════════════════════════════════════════════════════════════════
+function init() {
+  resizeCanvas();
+  requestAnimationFrame(render);
+  wsConnect();
+  // Fetch initial cron data for HUD
+  fetchCronData();
+  // Re-center after a brief layout settle
+  setTimeout(() => { resizeCanvas(); }, 100);
+}
+
+if (document.readyState === 'complete') {
+  init();
+} else {
+  window.addEventListener('load', init);
+}
+</script>
+</body>
+</html>

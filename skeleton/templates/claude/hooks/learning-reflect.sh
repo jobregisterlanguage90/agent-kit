@@ -22,10 +22,8 @@ if echo "$LAST_MSG" | grep -qiE "(ssh |curl |检查|巡检|部署|deploy|分析|
 
   cat << EOF
 {
-  "hookSpecificOutput": {
-    "hookEventName": "Stop",
-    "additionalContext": "【学习反思】这轮工作中有没有遇到不确定的、回答不够好的、或不知道最佳实践的地方？如果有，用一句话写入 memory/knowledge/learning-queue.md（格式：| P1/P2 | 课题 | 来源 | 今天日期 | pending |）。当前待学 ${PENDING} 个课题。如果没有盲区就忽略这条提醒。"
-  }
+  "continue": true,
+  "systemMessage": "【学习反思】这轮工作中有没有遇到不确定的、回答不够好的、或不知道最佳实践的地方？如果有，用一句话写入 memory/knowledge/learning-queue.md（格式：| P1/P2 | 课题 | 来源 | 今天日期 | pending |）。当前待学 ${PENDING} 个课题。如果没有盲区就忽略这条提醒。"
 }
 EOF
   exit 0

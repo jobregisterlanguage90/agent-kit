@@ -16,5 +16,27 @@
       "Bash(cat memory/*.md)",
       "Bash(jq * entities.yaml)"
     ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/learning-reflect.sh\""
+          }
+        ]
+      }
+    ],
+    "TeammateIdle": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/idle-learn.sh\""
+          }
+        ]
+      }
+    ]
   }
 }

@@ -57,7 +57,7 @@ TEMPLATE_DIR="$SCRIPT_DIR/templates/claude"
 mkdir -p "$CLAUDE_DIR/hooks"
 
 # 复制 hooks（模板更新时覆盖）
-for hook in session-start.sh stop-check.sh prompt-check.sh; do
+for hook in session-start.sh stop-check.sh prompt-check.sh learning-reflect.sh idle-learn.sh; do
     if [ ! -f "$CLAUDE_DIR/hooks/$hook" ] || \
        [ "$TEMPLATE_DIR/hooks/$hook" -nt "$CLAUDE_DIR/hooks/$hook" ]; then
         cp "$TEMPLATE_DIR/hooks/$hook" "$CLAUDE_DIR/hooks/$hook"

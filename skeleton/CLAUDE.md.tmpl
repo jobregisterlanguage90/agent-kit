@@ -313,7 +313,15 @@ Plugin 守护进程独立于 Claude 进程树，会话结束不影响。**不需
 
 ---
 
-## 自我学习规则
+## 自我学习（事件驱动，无需记忆规则）
+
+学习由 Hook 自动驱动，不依赖 CLAUDE.md 规则记忆：
+
+- **Stop Hook** — 每轮工作后自动注入反思提醒 → 发现盲区写入 `memory/knowledge/learning-queue.md`
+- **TeammateIdle Hook** — Worker 空闲时自动触发 → 调用 `self-study` Skill 学习
+- 学习流程详见 `skills/_self-study/SKILL.md`，完全由 Hook 驱动
+
+### 知识积累
 
 收到 Plugin 报告（如定时巡检结果）时，不只是转发数据，而是**对比、分析、积累**：
 

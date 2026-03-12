@@ -170,6 +170,112 @@ while [ "$i" -lt "$count" ]; do
 
   api_descendant "$DESC_BODY" || log "表格写入失败"
 
+  # ── LCP 元素分析 ──
+  lcp_selector=$(jq -r ".results[$i].lcpElement.selector // empty" "$REPORT_FILE")
+  lcp_snippet=$(jq -r ".results[$i].lcpElement.snippet // empty" "$REPORT_FILE")
+  if [ -n "$lcp_selector" ]; then
+    api_children '{"children":[{"block_type":4,"heading2":{"elements":[{"text_run":{"content":"🎯 LCP 元素分析"}}]}}],"index":-1}'
+
+    # 提取图片 URL（如果 LCP 是图片）
+    lcp_img=$(echo "$lcp_snippet" | sed -n 's/.*src="\([^"]*\)".*/\1/p' | head -1 || true)
+    lcp_text="选择器: ${lcp_selector}"
+    [ -n "$lcp_img" ] && lcp_text="${lcp_text}\n图片: ${lcp_img}"
+
+    api_children "$(jq -n --arg t "$lcp_text" \
+      '{children:[{block_type:14,code:{elements:[{text_run:{content:$t}}],language:1}}],index:-1}')"
+
+    # LCP 阶段分解
+    phase_count=$(jq -r ".results[$i].lcpPhases | length" "$REPORT_FILE" 2>/dev/null || echo "0")
+    if [ "$phase_count" -gt 0 ]; then
+      phase_text=""
+      j=0
+      while [ "$j" -lt "$phase_count" ]; do
+        p_name=$(jq -r ".results[$i].lcpPhases[$j].phase" "$REPORT_FILE")
+        p_dur=$(jq -r ".results[$i].lcpPhases[$j].duration_ms" "$REPORT_FILE")
+        # 标记瓶颈阶段（占 LCP 40%+ 的）
+        pct=0
+        [ "$lcp" -gt 0 ] && pct=$((p_dur * 100 / lcp))
+        marker=""
+        [ "$pct" -gt 40 ] && marker=" ⚠️ 瓶颈"
+        phase_text="${phase_text}• ${p_name}: ${p_dur}ms (${pct}%)${marker}\n"
+        j=$((j + 1))
+      done
+      api_children "$(jq -n --arg t "$(echo -e "$phase_text")" \
+        '{children:[{block_type:2,text:{elements:[{text_run:{content:$t}}]}}],index:-1}')"
+    fi
+
+    # LCP 发现检查
+    lcp_fp=$(jq -r ".results[$i].lcpDiscovery.fetchpriority // empty" "$REPORT_FILE")
+    lcp_disc=$(jq -r ".results[$i].lcpDiscovery.discoverable // empty" "$REPORT_FILE")
+    lcp_eager=$(jq -r ".results[$i].lcpDiscovery.notLazy // empty" "$REPORT_FILE")
+    if [ -n "$lcp_fp" ]; then
+      check_text=""
+      [ "$lcp_fp" = "true" ] && check_text="${check_text}✅ fetchpriority=high 已设置\n" || check_text="${check_text}❌ 缺少 fetchpriority=high\n"
+      [ "$lcp_disc" = "true" ] && check_text="${check_text}✅ 资源可在初始文档中发现\n" || check_text="${check_text}❌ 资源未在初始文档中发现\n"
+      [ "$lcp_eager" = "true" ] && check_text="${check_text}✅ 未设置 lazy load\n" || check_text="${check_text}❌ 不应对 LCP 元素 lazy load\n"
+      api_children "$(jq -n --arg t "$(echo -e "$check_text")" \
+        '{children:[{block_type:2,text:{elements:[{text_run:{content:$t}}]}}],index:-1}')"
+    fi
+  fi
+
+  # ── 第三方脚本影响 ──
+  tp_count=$(jq -r ".results[$i].thirdParties | length" "$REPORT_FILE" 2>/dev/null || echo "0")
+  if [ "$tp_count" -gt 0 ]; then
+    api_children '{"children":[{"block_type":4,"heading2":{"elements":[{"text_run":{"content":"📦 第三方脚本影响"}}]}}],"index":-1}'
+
+    tp_text=""
+    j=0
+    while [ "$j" -lt "$tp_count" ]; do
+      tp_name=$(jq -r ".results[$i].thirdParties[$j].name" "$REPORT_FILE")
+      tp_size=$(jq -r ".results[$i].thirdParties[$j].size_kb" "$REPORT_FILE")
+      tp_time=$(jq -r ".results[$i].thirdParties[$j].main_thread_ms" "$REPORT_FILE")
+      tp_text="${tp_text}• ${tp_name}: ${tp_size}KB, 主线程 ${tp_time}ms\n"
+      j=$((j + 1))
+    done
+    api_children "$(jq -n --arg t "$(echo -e "$tp_text")" \
+      '{children:[{block_type:2,text:{elements:[{text_run:{content:$t}}]}}],index:-1}')"
+  fi
+
+  # ── 资源加载汇总 ──
+  rs_count=$(jq -r ".results[$i].resourceSummary | length" "$REPORT_FILE" 2>/dev/null || echo "0")
+  if [ "$rs_count" -gt 0 ]; then
+    api_children '{"children":[{"block_type":4,"heading2":{"elements":[{"text_run":{"content":"📊 资源加载汇总"}}]}}],"index":-1}'
+
+    rs_text=""
+    j=0
+    while [ "$j" -lt "$rs_count" ]; do
+      rs_type=$(jq -r ".results[$i].resourceSummary[$j].type" "$REPORT_FILE")
+      rs_cnt=$(jq -r ".results[$i].resourceSummary[$j].count" "$REPORT_FILE")
+      rs_size=$(jq -r ".results[$i].resourceSummary[$j].size_kb" "$REPORT_FILE")
+      [ "$rs_type" = "total" ] && rs_text="总计: ${rs_cnt} 请求, ${rs_size}KB\n${rs_text}" && j=$((j + 1)) && continue
+      [ "$rs_cnt" -eq 0 ] && j=$((j + 1)) && continue
+      rs_text="${rs_text}• ${rs_type}: ${rs_cnt} 请求, ${rs_size}KB\n"
+      j=$((j + 1))
+    done
+    api_children "$(jq -n --arg t "$(echo -e "$rs_text")" \
+      '{children:[{block_type:2,text:{elements:[{text_run:{content:$t}}]}}],index:-1}')"
+  fi
+
+  # ── Top CPU 重脚本 ──
+  ts_count=$(jq -r ".results[$i].topScripts | length" "$REPORT_FILE" 2>/dev/null || echo "0")
+  if [ "$ts_count" -gt 0 ]; then
+    api_children '{"children":[{"block_type":4,"heading2":{"elements":[{"text_run":{"content":"🔥 CPU 密集脚本 Top 5"}}]}}],"index":-1}'
+
+    ts_text=""
+    j=0
+    while [ "$j" -lt "$ts_count" ]; do
+      ts_url=$(jq -r ".results[$i].topScripts[$j].url" "$REPORT_FILE")
+      ts_script=$(jq -r ".results[$i].topScripts[$j].scripting_ms" "$REPORT_FILE")
+      ts_total=$(jq -r ".results[$i].topScripts[$j].total_ms" "$REPORT_FILE")
+      # 缩短 URL 显示
+      ts_short=$(echo "$ts_url" | sed 's|https\?://[^/]*/||' | cut -c1-60)
+      ts_text="${ts_text}• ${ts_short}: 脚本 ${ts_script}ms / 总计 ${ts_total}ms\n"
+      j=$((j + 1))
+    done
+    api_children "$(jq -n --arg t "$(echo -e "$ts_text")" \
+      '{children:[{block_type:2,text:{elements:[{text_run:{content:$t}}]}}],index:-1}')"
+  fi
+
   # ── 优化建议（Lighthouse 自动检测）──
   opp_count=$(jq -r ".results[$i].opportunities | length" "$REPORT_FILE" 2>/dev/null || echo "0")
   if [ "$opp_count" -gt 0 ]; then

@@ -126,3 +126,60 @@
 - ✅ session-start.sh 自动检活 + 重启
 - ❌ 轮询和 Team 依赖 Claude 进程 → 新会话必须重建
 - ❌ 消息只存内存队列 → 持久化到 data/ 才安全
+
+## 中心化状态协议（Worker 心跳 + 状态注册表 + 精准恢复）
+
+> 2026-03-25 新增。从 server-maintenance + android-tools 两个项目验证。
+
+### 设计哲学
+- ✅ **状态集中存储**：所有 Worker 状态存储在 Express 服务器 + `data/worker-states.json`
+- ✅ **恢复决策分布式**：stop-check.sh 和 dashboard-poll.sh 各自独立读状态做决策
+- ✅ **不盲目重建**：任何组件检测到 Worker 异常时，先"读账本"再精准恢复
+- ❌ 全量 TeamDelete + 重建所有 Worker → 丢失正在执行的任务 + iTerm 窗格溢出
+
+### Worker 生命周期（5 阶段）
+```
+online → busy → progress → idle → error
+  ↑                                  |
+  └──────── spawn 重建 ←─────────────┘
+```
+
+- ✅ 每个阶段通过 `POST /api/worker/state` 上报（含 task 描述）
+- ✅ 心跳：Worker 启动时 + 完成任务时，30 分钟无心跳视为 dead
+- ✅ 状态上报视为心跳（一次 API 调用同时刷新两者）
+- ❌ 只发心跳不上报状态 → Lead 不知道 Worker 在干什么
+
+### Worker ID 持久化
+- ✅ spawn 后**立即**写 `data/worker-ids.json`（task ID + 时间戳）
+- ✅ 上下文压缩后从文件恢复 task ID → SendMessage 继续使用
+- ❌ 不写文件 → 压缩后丢失 task ID，无法恢复通信
+
+### 精准恢复流程（stop-check.sh）
+```
+读 worker-ids.json → 查 /api/team/health → 读状态注册表 → 决策
+```
+
+恢复策略矩阵：
+
+| alive 数 | dead Worker 状态 | 动作 |
+|----------|-----------------|------|
+| N/N（全部） | - | 代发心跳，恢复 task IDs |
+| >0 | idle/error | ping → 60s 无回复 → spawn 那一个 |
+| >0 | busy (<30min) | 不动，等待任务完成 |
+| 0 | - | 代发心跳刷新 → 再查 → 仍为 0 → 逐个 spawn |
+
+- ✅ busy Worker 绝不重建（保护正在执行的任务）
+- ✅ ping 确认后才 spawn（避免误判）
+- ❌ alive=0 就直接全量重建 → busy 的 Worker 可能只是心跳延迟
+
+### 轮询保活（DAEMON_MODE 双模式）
+- ✅ Normal 模式：消费消息 → 输出 → 退出前自启 Daemon 副本（nohup）
+- ✅ Daemon 模式：不消费消息（避免无人处理），只做 60s Worker 健康检查
+- ✅ 冷却机制：1 小时内不重复 ping 同一批 Worker
+- ❌ 退出时不启 Daemon → Workers 死了没人发现
+
+### Lead 调度原则
+- ✅ Lead **只做轮询和调度，不执行任何 SSH/Skill 操作**
+- ✅ 收到飞书/Dashboard 消息 → 1 秒内 SendMessage 给空闲 Worker → 立即回到当前任务
+- ✅ 飞书消息和主任务并行，不串行
+- ❌ Lead 自己去 SSH 查服务器 → Worker 全空闲，Lead 阻塞在单任务上

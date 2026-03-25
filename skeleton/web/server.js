@@ -400,6 +400,156 @@ app.get('/api/history', (req, res) => {
   res.json({ history: results });
 });
 
+// ─── Team Worker 心跳 + 状态注册表（中心化状态协议）───
+// Worker 生命周期 5 阶段: online → busy → progress → idle → error
+// Lead 通过 GET /api/worker/states "读账本"做恢复决策
+
+let teamWorkers = {};  // { workerName: lastHeartbeat }
+let teamExpectedCount = parseInt(process.env.TEAM_WORKER_COUNT) || 4;
+let workerStates = {};  // { workerName: { status, task, progress, error, startedAt, lastUpdate } }
+const WORKER_STATES_FILE = path.join(__dirname, '..', 'data', 'worker-states.json');
+
+// 启动时加载持久化的 Worker 状态
+try {
+  if (fs.existsSync(WORKER_STATES_FILE)) {
+    workerStates = JSON.parse(fs.readFileSync(WORKER_STATES_FILE, 'utf8'));
+  }
+} catch (_) { /* ignore */ }
+
+function persistWorkerStates() {
+  try { fs.writeFileSync(WORKER_STATES_FILE, JSON.stringify(workerStates, null, 2)); } catch (_) { /* ignore */ }
+}
+
+// Heartbeat — Worker 启动时 + 完成任务时调用
+app.post('/api/team/heartbeat', (req, res) => {
+  const { worker_name } = req.body;
+  if (!worker_name) return res.status(400).json({ error: 'worker_name required' });
+  teamWorkers[worker_name] = Date.now();
+  if (!workerStates[worker_name]) {
+    workerStates[worker_name] = { status: 'online', task: null, progress: null, error: null, startedAt: null, lastUpdate: Date.now() };
+  } else {
+    workerStates[worker_name].lastUpdate = Date.now();
+  }
+  persistWorkerStates();
+  res.json({ success: true });
+});
+
+// Health check — Lead 读取全局 Worker 状态
+app.get('/api/team/health', (_req, res) => {
+  const now = Date.now();
+  const staleThreshold = 1800000; // 30 分钟无心跳视为 dead
+  const alive = Object.entries(teamWorkers).filter(([_, ts]) => now - ts < staleThreshold);
+  const dead = Object.entries(teamWorkers).filter(([_, ts]) => now - ts >= staleThreshold);
+  res.json({
+    expected: teamExpectedCount,
+    alive: alive.length,
+    aliveNames: alive.map(([name]) => name),
+    dead: dead.map(([name]) => name),
+    workers: Object.fromEntries(Object.entries(teamWorkers).map(([n, ts]) => [n, { lastHeartbeat: ts, stale: now - ts >= staleThreshold }])),
+    workerStates,
+  });
+});
+
+// Reset — Team 重建时清空
+app.post('/api/team/reset', (_req, res) => {
+  teamWorkers = {};
+  workerStates = {};
+  persistWorkerStates();
+  res.json({ success: true });
+});
+
+// Worker 状态上报 — 5 阶段生命周期
+app.post('/api/worker/state', (req, res) => {
+  const { name, status, task, progress, error } = req.body;
+  if (!name) return res.status(400).json({ error: 'name required' });
+  const now = Date.now();
+  workerStates[name] = {
+    status: status || 'online',
+    task: task || null,
+    progress: progress || null,
+    error: error || null,
+    startedAt: status === 'busy' ? (workerStates[name]?.startedAt || now) : null,
+    lastUpdate: now,
+  };
+  teamWorkers[name] = now; // 状态上报视为心跳
+  persistWorkerStates();
+  res.json({ success: true });
+});
+
+// Lead 读取所有 Worker 状态（"读账本"）
+app.get('/api/worker/states', (_req, res) => {
+  res.json(workerStates);
+});
+
+// 查询特定 Worker 状态
+app.get('/api/worker/state/:name', (req, res) => {
+  const ws = workerStates[req.params.name];
+  if (!ws) return res.status(404).json({ error: 'worker not found' });
+  res.json(ws);
+});
+
+// ─── Learning Lock API (multi-Worker safety) ───
+
+const claimedTopics = {}; // { topic: { worker, claimedAt } }
+const CLAIM_TIMEOUT = 2 * 60 * 60 * 1000; // 2h auto-release
+
+function cleanExpiredClaims() {
+  const now = Date.now();
+  for (const [topic, info] of Object.entries(claimedTopics)) {
+    if (now - info.claimedAt > CLAIM_TIMEOUT) delete claimedTopics[topic];
+  }
+}
+
+// Claim a learning topic (prevents multi-Worker duplication)
+app.post('/api/learning/claim', (req, res) => {
+  cleanExpiredClaims();
+  const { topic, worker_name } = req.body;
+  if (!topic) return res.status(400).json({ error: 'topic required' });
+  if (claimedTopics[topic]) {
+    return res.json({ success: false, claimed_by: claimedTopics[topic].worker });
+  }
+  claimedTopics[topic] = { worker: worker_name || 'unknown', claimedAt: Date.now() };
+  res.json({ success: true });
+});
+
+// Release a learning topic
+app.post('/api/learning/release', (req, res) => {
+  const { topic } = req.body;
+  if (!topic) return res.status(400).json({ error: 'topic required' });
+  delete claimedTopics[topic];
+  res.json({ success: true });
+});
+
+// List current claims
+app.get('/api/learning/claims', (_req, res) => {
+  cleanExpiredClaims();
+  res.json({ claims: claimedTopics });
+});
+
+// Recover stale learning topics (learning > 24h → pending)
+app.post('/api/learning/recover', (_req, res) => {
+  const queueFile = path.join(__dirname, '..', 'memory', 'knowledge', 'learning-queue.md');
+  try {
+    if (!fs.existsSync(queueFile)) return res.json({ recovered: 0 });
+    let content = fs.readFileSync(queueFile, 'utf8');
+    const today = new Date().toISOString().slice(0, 10);
+    let recovered = 0;
+    content = content.replace(/\|([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)\| learning \|/g,
+      (match, p1, p2, p3, dateCol) => {
+        const date = dateCol.trim();
+        if (date && date < today) {
+          recovered++;
+          return `|${p1}|${p2}|${p3}|${dateCol}| pending |`;
+        }
+        return match;
+      });
+    if (recovered > 0) fs.writeFileSync(queueFile, content);
+    res.json({ recovered, today });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── Plugin Route Mounting ───
 (function mountPluginRoutes() {
   const pluginsDir = path.join(__dirname, '..', 'plugins');

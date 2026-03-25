@@ -3,6 +3,11 @@
 飞书长连接 Bot — 消息中转
 接收飞书消息 → 转换为 Dashboard 消息格式 → POST /api/messages
 Claude 轮询捡到消息 → 处理 → reply.sh 回复
+
+离线保护：
+- Dashboard 不可达 → 飞书直接回复"系统未启动"
+- Dashboard 可达但 Claude 未连接 → 消息入队 + 回复"已记录，上线后处理"
+- Claude 在线 → 正常转发，由 Claude 处理后回复
 """
 
 import os
@@ -10,6 +15,7 @@ import sys
 import json
 import logging
 import re
+import subprocess
 import requests
 
 # 加载 .env（start.sh 已预加载，这里是备用）
@@ -30,7 +36,9 @@ from lark_oapi.api.im.v1.model import P2ImMessageReceiveV1
 APP_ID = os.environ.get("FEISHU_APP_ID", "")
 APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "")
 DASHBOARD_PORT = os.environ.get("DASHBOARD_PORT", "7890")
-DASHBOARD_URL = os.environ.get("DASHBOARD_URL", f"http://localhost:{DASHBOARD_PORT}/api/messages")
+DASHBOARD_BASE = f"http://localhost:{DASHBOARD_PORT}"
+DASHBOARD_URL = os.environ.get("DASHBOARD_URL", f"{DASHBOARD_BASE}/api/messages")
+_reply_script = os.path.join(_script_dir, "reply.sh")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -68,6 +76,36 @@ def _load_aliases():
         log.warning("加载 entities.yaml 失败: %s", e)
 
 _load_aliases()
+
+
+def feishu_reply(message_id: str, text: str) -> None:
+    """直接通过飞书 API 回复消息（不经过 Claude，用于离线状态通知）"""
+    if not os.path.exists(_reply_script):
+        log.warning("reply.sh 不存在，无法发送离线回复")
+        return
+    try:
+        result = subprocess.run(
+            ["bash", _reply_script, message_id, text],
+            capture_output=True, text=True, timeout=10,
+            cwd=_project_dir
+        )
+        if result.returncode == 0:
+            log.info("离线自动回复成功: %s", message_id)
+        else:
+            log.warning("离线自动回复失败: %s", result.stderr)
+    except Exception as e:
+        log.error("离线回复异常: %s", e)
+
+
+def check_claude_online() -> str:
+    """检查 Claude 是否在线，返回 'connected'/'working'/'idle'/'offline'"""
+    try:
+        resp = requests.get(f"{DASHBOARD_BASE}/api/claude/status", timeout=2)
+        if resp.ok:
+            return resp.json().get("status", "idle")
+        return "offline"
+    except Exception:
+        return "offline"
 
 
 def extract_text(message) -> str:
@@ -135,11 +173,28 @@ def on_message(data: P2ImMessageReceiveV1) -> None:
         }
         payload["source"] = "feishu"
 
-        resp = requests.post(DASHBOARD_URL, json=payload, timeout=5)
-        if resp.ok:
-            log.info("已转发到 Dashboard: type=%s", payload["type"])
-        else:
-            log.warning("Dashboard 响应异常: %s %s", resp.status_code, resp.text)
+        # 尝试投递到 Dashboard 队列
+        dashboard_ok = False
+        try:
+            resp = requests.post(DASHBOARD_URL, json=payload, timeout=5)
+            dashboard_ok = resp.ok
+            if resp.ok:
+                log.info("已转发到 Dashboard: type=%s", payload["type"])
+            else:
+                log.warning("Dashboard 响应异常: %s %s", resp.status_code, resp.text)
+        except Exception as e:
+            log.warning("Dashboard 不可达: %s", e)
+
+        # Dashboard 不可达 → 整个系统未启动，通知用户
+        if not dashboard_ok:
+            feishu_reply(msg.message_id, "⚠️ Agent 系统当前未启动，消息无法入队。请打开 Claude Code 项目后重新发送。")
+            return
+
+        # Dashboard 可达但 Claude 未连接 → 消息已入队，发送等待提示
+        claude_status = check_claude_online()
+        if claude_status not in ("connected", "working", "idle"):
+            log.info("消息已入队，Claude 当前状态: %s", claude_status)
+            feishu_reply(msg.message_id, "📥 消息已记录，Claude 当前不在线，上线后会自动处理。")
 
     except Exception as e:
         log.error("消息处理失败: %s", e, exc_info=True)

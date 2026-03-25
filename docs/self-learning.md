@@ -71,6 +71,72 @@ Claude 分析（对比知识库中的基线和历史）
 | 03-12 | discovery | LCP 退步与新 Shopify App 相关 | 建议移除或延迟加载 |
 ```
 
+## 学习状态机
+
+课题在 `learning-queue.md` 中流转，有 3 个状态：
+
+```
+pending ──claim──→ learning ──完成──→ done（移到已完成表）
+   ↑                  │
+   └──recover(24h)────┘   claim 超时(2h) 自动释放锁
+```
+
+### 状态流转
+
+| 状态 | 含义 | 进入条件 | 退出条件 |
+|------|------|---------|---------|
+| `pending` | 待学 | 用户/Hook 写入，或 recover 重置 | Worker claim 成功 |
+| `learning` | 学习中 | Worker claim 后更新 | 学完 → done，或超时 → pending |
+| `done` | 已完成 | 学完移到已完成表 | 终态 |
+
+### 多 Worker 安全
+
+多个 Worker 可能同时空闲，`/api/learning/claim` 保证同一课题只被一个 Worker 学习：
+
+```
+Worker-1: POST /api/learning/claim {topic:"X"} → {success:true}   ← 领取成功
+Worker-2: POST /api/learning/claim {topic:"X"} → {success:false}  ← 已被领取，选下一个
+Worker-1: 学习完成 → POST /api/learning/release {topic:"X"}      ← 释放锁
+```
+
+### 超时保护
+
+| 机制 | 超时 | 实现位置 |
+|------|------|---------|
+| Claim 锁 | 2 小时 | `server.js` cleanExpiredClaims() |
+| Learning 状态 | 24 小时 | `/api/learning/recover` 端点 |
+
+- **Claim 锁超时**：Worker crash 后 2h 自动释放，其他 Worker 可重新领取
+- **Learning 状态恢复**：`idle-learn.sh` 启动时调用 recover API，将昨天及更早的 `learning` 状态重置为 `pending`
+
+### Hook 驱动链
+
+```
+主进程 Stop hook (learning-reflect.sh)
+    → 每次实际工作后反思盲区
+    → 发现盲区写入 learning-queue.md
+    → 如有最近学习成果，提醒验证是否正确应用
+
+Worker TeammateIdle hook (idle-learn.sh)
+    → 调用 /api/learning/recover 清理 stale
+    → 有 pending 课题 → 反思 + 领取 + 学习 (exit 2)
+    → 无课题 + 冷却期外 → 仅反思 (exit 2)
+    → 无课题 + 冷却期内 → 允许空闲 (exit 0)
+
+UserPromptSubmit hook (prompt-check.sh)
+    → 检测用户消息中的新概念
+    → 注入提醒调用 intent-check Skill 验证理解
+```
+
+### Dashboard API 端点
+
+| 端点 | 方法 | 用途 |
+|------|------|------|
+| `/api/learning/claim` | POST | 领取课题 `{topic, worker_name}` |
+| `/api/learning/release` | POST | 释放课题 `{topic}` |
+| `/api/learning/claims` | GET | 查看当前所有锁 |
+| `/api/learning/recover` | POST | 恢复 stale 课题（learning > 24h → pending） |
+
 ## Agent 何时该学习
 
 ### 收到 Plugin 报告时（自动触发）

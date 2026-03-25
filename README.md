@@ -2,7 +2,7 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> Claude Code is the brain. Agent Kit is the runtime that makes it autonomous.
+> Claude Agent Kit is the **Agent Runtime** for Claude Code — giving it persistence, observability, and multi-process coordination. In short: **the body for the brain.**
 
 **Claude Code is the most capable AI coding CLI available today.** It has tool calling, bash execution, file editing, hooks, team spawning — everything needed for powerful single-session work.
 

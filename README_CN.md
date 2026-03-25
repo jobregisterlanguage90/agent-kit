@@ -2,7 +2,7 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> Claude Code 是大脑，Agent Kit 是让它自治运行的 Runtime。
+> Claude Agent Kit 是 Claude Code 的 **Agent Runtime** — 给大脑装上持久化、可观测、多进程协调的躯体。
 
 **Claude Code 是目前最强的 AI 编程 CLI。** 它有工具调用、Bash 执行、文件编辑、Hooks、Team 多 Agent — 单次会话内的能力已经非常强大。
 

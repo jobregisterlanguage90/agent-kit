@@ -53,8 +53,15 @@ fi
 WORKER_STATES=$(curl -sf "$BASE_URL/api/worker/states" 2>/dev/null || echo "{}")
 WORKER_STATE_SUMMARY=""
 EXPECTED=$(echo "$HEALTH_JSON" | jq -r '.expected // 4' 2>/dev/null)
-WORKER_NAMES=$(echo "$WORKER_STATES" | jq -r 'keys[]' 2>/dev/null)
-for w in $WORKER_NAMES; do
+# 动态读取 Worker 名（从 worker-ids.json 优先，fallback 状态注册表，不硬编码）
+KNOWN_WORKERS=""
+if [ -f "$WORKER_FILE" ]; then
+  KNOWN_WORKERS=$(jq -r 'keys[]' "$WORKER_FILE" 2>/dev/null)
+fi
+if [ -z "$KNOWN_WORKERS" ]; then
+  KNOWN_WORKERS=$(echo "$WORKER_STATES" | jq -r 'keys[]' 2>/dev/null)
+fi
+for w in $KNOWN_WORKERS; do
   ws=$(echo "$WORKER_STATES" | jq -r ".\"$w\".status // \"unknown\"" 2>/dev/null)
   wt=$(echo "$WORKER_STATES" | jq -r ".\"$w\".task // \"无\"" 2>/dev/null)
   WORKER_STATE_SUMMARY="$WORKER_STATE_SUMMARY  $w: status=$ws, task=$wt\n"
@@ -69,12 +76,13 @@ STATE_CHECK="
     Dashboard alive=${WORKER_ALIVE_COUNT}/${EXPECTED}, dead=[${WORKER_DEAD_NAMES}]
     状态注册表：
 $(echo -e "$WORKER_STATE_SUMMARY")
-    恢复策略（精准恢复，仅重建确认死亡的 Worker）：
-      alive=${EXPECTED} → 直接代发心跳，无需重建
-      alive>0 → 只对 dead 的 Worker 执行：SendMessage ping，60s 无回复才 spawn
-      alive=0 → 先代发心跳刷新，再查 health；仍为 0 才逐个 spawn
-      状态=busy 的 → 不动（正在执行任务）
-    禁止全量 TeamDelete + 重建所有 Worker"
+    恢复策略（统一路径：逐个 ping → 验证 → 按需处理，避免给已 shutdown 的 Worker 刷假心跳）：
+      → 逐个 SendMessage ping 所有已知 Worker（从 worker-ids.json 读取）
+      → 有 pong 回复 → 代发心跳刷新该 Worker
+      → 60s 无回复 → spawn 新的替换该 Worker → 更新 worker-ids.json
+      → 状态=busy 且 <30min → 跳过（正在执行任务，不 ping 不动）
+    禁止全量 TeamDelete + 重建所有 Worker（防 iTerm 窗格溢出）
+    禁止无脑代发心跳（必须先 ping 确认存活）"
 
 if [ "$MSG_COUNT" -gt "0" ] 2>/dev/null; then
   SUMMARY=""

@@ -458,6 +458,19 @@ app.post('/api/team/reset', (_req, res) => {
   res.json({ success: true });
 });
 
+// Deregister — Worker shutdown 后调用，从心跳表移除，标记 status=shutdown
+// 防止已 shutdown 的 Worker 被代发心跳"假复活"
+app.post('/api/team/deregister', (req, res) => {
+  const { worker_name } = req.body;
+  if (!worker_name) return res.status(400).json({ error: 'worker_name required' });
+  delete teamWorkers[worker_name];
+  if (workerStates[worker_name]) {
+    workerStates[worker_name] = { status: 'shutdown', task: null, progress: null, error: null, startedAt: null, lastUpdate: Date.now() };
+  }
+  persistWorkerStates();
+  res.json({ success: true });
+});
+
 // Worker 状态上报 — 5 阶段生命周期
 app.post('/api/worker/state', (req, res) => {
   const { name, status, task, progress, error } = req.body;

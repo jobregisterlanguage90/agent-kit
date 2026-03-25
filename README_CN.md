@@ -2,33 +2,33 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> 将 Claude Code 变成自治、自愈、多 Worker 协作的超级 Agent。
+> Claude Code 是大脑。但大脑不能独立生存。
 
-Claude Agent Kit 是一个**元框架** — 基于 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 构建生产级 AI Agent 的基础设施。它不是又一个聊天机器人包装器，而是让 Claude 能管理服务器、操控手机、监控安全、7x24 无人值守运行的底层架构。
+**Claude Code 是世界上最强的 AI 编程 CLI。** 但它的设计是对话式的 — 你问它答，会话结束，一切归零。它没有跨会话的记忆，没有你不在时的心跳，没有你能观察到的身体，没有主动行动的本能。
 
-**一条命令，一套框架，无限 Agent。**
+**Claude Agent Kit 是它的操作系统。** 给它持久记忆、不死心跳、可视化身体、主动巡检本能，以及最重要的 — **可克隆的 DNA**。一条命令，为任何领域创建一个完全自治的 Agent。
 
 ```bash
 bash create-agent.sh
 ```
 
 ![Hero Banner](docs/images/hero-banner.png)
-*中央 AI 大脑通过并行 Worker 协调多台服务器 — Claude Agent Kit 的核心概念*
+
+**不是替代 Claude Code，是释放它的全部潜力。**
 
 ---
 
-## 为什么不一样
+## 从"对话工具"到"自治系统"，中间缺什么
 
-Claude Code 很强大，但开箱即用时它是**无状态的** — 上下文压缩后忘掉一切，不能跑后台任务，也没有多 Worker 协调能力。Claude Agent Kit 解决了这些问题：
+| 缺失 | 意味着什么 | Agent Kit 如何解决 |
+|------|-----------|-------------------|
+| **持续性** | 上下文压缩 → Worker 死亡、知识丢失、状态归零 | 4 层持续：进程（nohup daemon）、记忆（实体文件）、状态（心跳注册表）、行为（CLAUDE.md 灵魂） |
+| **主动性** | 你不说话它不动，空闲 = 浪费 | Plugin 定时巡检 24/7、Hook 驱动空闲自学、趋势检测主动告警 |
+| **可观测性** | 终端文字流是黑箱 | 像素风 Dashboard：小人走向机柜、终端 Tab 显示命令、取消按钮随时中断 |
 
-| 痛点 | 解决方案 |
-|------|----------|
-| 上下文压缩导致 Worker 丢失 | **中心化状态协议** — 心跳注册表 + 精准恢复 |
-| 没有后台监控能力 | **Plugin 守护进程** — nohup 独立进程，不受 Claude 生命周期影响 |
-| 没有可视化反馈 | **像素风 Dashboard** — 等距机房 UI + WebSocket 实时更新 |
-| 没有多 Agent 协调 | **Team 模式** — Lead 调度，Worker 并行执行 |
-| 会话间知识丢失 | **Memory 系统** — 每实体 Markdown 文件 + 跨实体知识库 |
-| 没有自我改进能力 | **自主学习闭环** — 自动发现知识盲区，研究后沉淀到知识库 |
+**没有 Agent Kit**，想让 Claude Code 7x24 自治运行，你要自己发明：会话恢复协议、进程分离架构、多 Worker 并发调度、知识积累闭环、多通道通信、实时可视化、首次引导流程。**保守 2-4 周**，踩完我们 [实战验证](docs/proven-patterns.md) 里记录的每一个坑。
+
+**有了 Agent Kit**：`bash create-agent.sh` → **5 分钟，生产可用。**
 
 ---
 

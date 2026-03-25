@@ -2,33 +2,35 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> Turn Claude Code into autonomous, self-healing, multi-worker super agents.
+> Claude Code is the brain. But a brain alone isn't alive.
 
-Claude Agent Kit is a **meta-framework** for building production-grade AI agents on top of [Claude Code](https://docs.anthropic.com/en/docs/claude-code). It's not another chatbot wrapper — it's the infrastructure that lets Claude manage servers, operate phones, monitor security, and run 24/7 with zero human babysitting.
+**Claude Code is the smartest AI coding CLI in the world.** But it's designed for conversations — you ask, it answers, session ends, everything resets. It has no memory across sessions, no heartbeat when you're away, no body you can observe, no instinct to act on its own.
 
-**One command. One framework. Infinite agents.**
+**Claude Agent Kit is its operating system.** It gives Claude Code persistent memory, an immortal heartbeat, a visible body, proactive instincts, and — most importantly — **clonable DNA**. One command creates a fully autonomous agent for any domain.
 
 ```bash
 bash create-agent.sh
 ```
 
 ![Hero Banner](docs/images/hero-banner.png)
-*Central AI brain coordinating multiple server racks through parallel workers — the core concept of Claude Agent Kit*
+
+**Not replacing Claude Code. Unleashing it.**
 
 ---
 
-## What Makes This Different
+## The Gap Between "Chat Tool" and "Autonomous System"
 
-Claude Code is powerful, but out of the box it's **stateless** — it forgets everything when context compresses, can't run background tasks, and has no way to coordinate multiple workers. Claude Agent Kit solves all of this:
+From a conversation tool to a 24/7 autonomous system, three things are missing:
 
-| Problem | Solution |
-|---------|----------|
-| Context compression kills workers | **Centralized State Protocol** — heartbeat registry + precise recovery |
-| No background monitoring | **Plugin Daemons** — nohup processes independent of Claude's lifecycle |
-| No visual feedback | **Pixel-art Dashboard** — isometric server rack UI with WebSocket real-time updates |
-| No multi-agent coordination | **Team Mode** — Lead dispatches, Workers execute in parallel |
-| Knowledge lost between sessions | **Memory System** — per-entity Markdown files + cross-entity knowledge base |
-| No self-improvement | **Self-Learning Loop** — auto-discovers knowledge gaps, studies, and integrates findings |
+| Missing | What It Means | How Agent Kit Solves It |
+|---------|--------------|------------------------|
+| **Persistence** | Context compresses → workers die, knowledge lost, state gone | 4-layer persistence: Process (nohup daemons), Memory (entity files), State (heartbeat registry), Behavior (CLAUDE.md soul) |
+| **Proactivity** | Only acts when you speak, idle = wasted | Plugin daemons monitor 24/7, hooks trigger self-learning on idle, trend detection alerts before you ask |
+| **Observability** | Terminal text stream is a black box | Pixel-art Dashboard: workers walk to server racks, terminal tabs show live commands, cancel buttons give control |
+
+**Without Agent Kit**, building a 24/7 Claude Code agent means inventing: session recovery protocol, process separation architecture, multi-worker scheduling, knowledge accumulation loops, multi-channel communication, real-time visualization, and first-run onboarding. **Conservatively 2-4 weeks**, hitting every pitfall documented in our [proven patterns](docs/proven-patterns.md).
+
+**With Agent Kit**: `bash create-agent.sh` → **5 minutes, production-ready.**
 
 ---
 

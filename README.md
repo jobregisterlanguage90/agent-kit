@@ -417,6 +417,13 @@ A: The self-healing system kicks in automatically via stop-check.sh. Worker IDs 
 
 ---
 
+## Contributors
+
+| | Name | Role |
+|---|------|------|
+| [@anjiacm](https://github.com/anjiacm) | **Eric.wu** | Creator — architecture design, production validation, continuous iteration |
+| Claude (Anthropic) | **Claude Opus/Sonnet** | AI Developer — code implementation, framework extraction, documentation |
+
 ## License
 
 MIT

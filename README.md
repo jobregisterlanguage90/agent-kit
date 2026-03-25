@@ -90,6 +90,8 @@ When you run multiple Agent Kit projects simultaneously, you need a control laye
 - **Tray app** (Tauri v2): Menubar panel showing all project statuses, recent notifications, pending actions
 - **Relationship to Agent Kit**: Agent Kit gives depth (full runtime within one project); Claude Hub gives breadth (unified management across projects)
 
+![Claude Hub](docs/images/claude-hub-preview.png)
+
 ---
 
 ## Architecture

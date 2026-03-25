@@ -2,11 +2,13 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> Claude Code is the brain. But a brain alone isn't alive.
+> Claude Code is the brain. Agent Kit is the runtime that makes it autonomous.
 
-**Claude Code is the smartest AI coding CLI in the world.** But it's designed for conversations — you ask, it answers, session ends, everything resets. It has no memory across sessions, no heartbeat when you're away, no body you can observe, no instinct to act on its own.
+**Claude Code is the most capable AI coding CLI available today.** It has tool calling, bash execution, file editing, hooks, team spawning — everything needed for powerful single-session work.
 
-**Claude Agent Kit is its operating system.** It gives Claude Code persistent memory, an immortal heartbeat, a visible body, proactive instincts, and — most importantly — **clonable DNA**. One command creates a fully autonomous agent for any domain.
+**But it's request-response by design.** It doesn't have a scheduler, a persistent memory system, a task queue, state recovery, or a lifecycle manager. To build a real autonomous agent — one that runs 24/7, survives context compression, coordinates multiple workers, and improves over time — you need an entire runtime layer on top.
+
+**Claude Agent Kit is that runtime layer.**
 
 ```bash
 bash create-agent.sh
@@ -14,23 +16,24 @@ bash create-agent.sh
 
 ![Hero Banner](docs/images/hero-banner.png)
 
-**Not replacing Claude Code. Unleashing it.**
-
 ---
 
-## The Gap Between "Chat Tool" and "Autonomous System"
+## What Agent Kit Actually Builds On Top of Claude Code
 
-From a conversation tool to a 24/7 autonomous system, three things are missing:
+Claude Code provides the raw capabilities. Agent Kit adds the 6 things needed to turn a conversation into a system:
 
-| Missing | What It Means | How Agent Kit Solves It |
-|---------|--------------|------------------------|
-| **Persistence** | Context compresses → workers die, knowledge lost, state gone | 4-layer persistence: Process (nohup daemons), Memory (entity files), State (heartbeat registry), Behavior (CLAUDE.md soul) |
-| **Proactivity** | Only acts when you speak, idle = wasted | Plugin daemons monitor 24/7, hooks trigger self-learning on idle, trend detection alerts before you ask |
-| **Observability** | Terminal text stream is a black box | Pixel-art Dashboard: workers walk to server racks, terminal tabs show live commands, cancel buttons give control |
+| What's Missing | Why It Matters | What Agent Kit Provides |
+|----------------|---------------|------------------------|
+| **Agent Loop** | No event loop = only acts when you speak | Plugin daemons (nohup) run independent monitoring cycles 24/7 |
+| **Memory** | Context compression = knowledge lost | Per-entity Markdown files + cross-entity knowledge base, persisted across sessions |
+| **Task Queue** | No way to queue and dispatch work | Message queue (REST API) + background polling + multi-channel input (terminal, Dashboard, Feishu) |
+| **State Management** | Workers die silently after compression | Centralized State Protocol: heartbeat registry + state ledger + precise per-worker recovery in <5s |
+| **Scheduler** | No time-based or event-based triggering | Hook-driven lifecycle (session start/stop/idle) + cron heartbeats + daemon task scheduling |
+| **Observability** | Terminal output is a black box | Real-time Dashboard: pixel-art workers, live terminal tabs, cancel buttons, status panels |
 
-**Without Agent Kit**, building a 24/7 Claude Code agent means inventing: session recovery protocol, process separation architecture, multi-worker scheduling, knowledge accumulation loops, multi-channel communication, real-time visualization, and first-run onboarding. **Conservatively 2-4 weeks**, hitting every pitfall documented in our [proven patterns](docs/proven-patterns.md).
+**Without Agent Kit**, building this from scratch takes 2-4 weeks and dozens of pitfalls (documented in [proven patterns](docs/proven-patterns.md)).
 
-**With Agent Kit**: `bash create-agent.sh` → **5 minutes, production-ready.**
+**With Agent Kit**: one command, 5 minutes, production-ready.
 
 ---
 

@@ -2,11 +2,13 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-> Claude Code 是大脑。但大脑不能独立生存。
+> Claude Code 是大脑，Agent Kit 是让它自治运行的 Runtime。
 
-**Claude Code 是世界上最强的 AI 编程 CLI。** 但它的设计是对话式的 — 你问它答，会话结束，一切归零。它没有跨会话的记忆，没有你不在时的心跳，没有你能观察到的身体，没有主动行动的本能。
+**Claude Code 是目前最强的 AI 编程 CLI。** 它有工具调用、Bash 执行、文件编辑、Hooks、Team 多 Agent — 单次会话内的能力已经非常强大。
 
-**Claude Agent Kit 是它的操作系统。** 给它持久记忆、不死心跳、可视化身体、主动巡检本能，以及最重要的 — **可克隆的 DNA**。一条命令，为任何领域创建一个完全自治的 Agent。
+**但它的设计是 request-response 模式。** 它没有调度器、没有持久记忆系统、没有任务队列、没有状态恢复、没有生命周期管理。要构建一个真正的自治 Agent — 7x24 运行、上下文压缩后自愈、多 Worker 协调、持续自我改进 — 你需要在它之上搭建一整套 Runtime 层。
+
+**Claude Agent Kit 就是这个 Runtime 层。**
 
 ```bash
 bash create-agent.sh
@@ -14,21 +16,24 @@ bash create-agent.sh
 
 ![Hero Banner](docs/images/hero-banner.png)
 
-**不是替代 Claude Code，是释放它的全部潜力。**
-
 ---
 
-## 从"对话工具"到"自治系统"，中间缺什么
+## Agent Kit 在 Claude Code 之上具体构建了什么
 
-| 缺失 | 意味着什么 | Agent Kit 如何解决 |
-|------|-----------|-------------------|
-| **持续性** | 上下文压缩 → Worker 死亡、知识丢失、状态归零 | 4 层持续：进程（nohup daemon）、记忆（实体文件）、状态（心跳注册表）、行为（CLAUDE.md 灵魂） |
-| **主动性** | 你不说话它不动，空闲 = 浪费 | Plugin 定时巡检 24/7、Hook 驱动空闲自学、趋势检测主动告警 |
-| **可观测性** | 终端文字流是黑箱 | 像素风 Dashboard：小人走向机柜、终端 Tab 显示命令、取消按钮随时中断 |
+Claude Code 提供原始能力，Agent Kit 补齐从对话到系统所需的 6 个模块：
 
-**没有 Agent Kit**，想让 Claude Code 7x24 自治运行，你要自己发明：会话恢复协议、进程分离架构、多 Worker 并发调度、知识积累闭环、多通道通信、实时可视化、首次引导流程。**保守 2-4 周**，踩完我们 [实战验证](docs/proven-patterns.md) 里记录的每一个坑。
+| 缺失模块 | 为什么重要 | Agent Kit 提供什么 |
+|---------|-----------|-------------------|
+| **Agent Loop** | 没有事件循环 = 你不说它不动 | Plugin 守护进程（nohup）独立运行 24/7 监控循环 |
+| **Memory** | 上下文压缩 = 知识丢失 | 每实体 Markdown 文件 + 跨实体知识库，跨会话持久化 |
+| **Task Queue** | 无法排队和分发任务 | 消息队列（REST API）+ 后台轮询 + 多通道输入（终端、Dashboard、飞书） |
+| **State 管理** | Worker 压缩后无声死亡 | 中心化状态协议：心跳注册表 + 状态账本 + 逐 Worker 精准恢复 <5 秒 |
+| **Scheduler** | 没有定时/事件触发机制 | Hook 驱动生命周期（启动/停止/空闲）+ Cron 心跳 + Daemon 任务调度 |
+| **Observability** | 终端输出是黑箱 | 实时 Dashboard：像素风 Worker 动画、终端 Tab、取消按钮、状态面板 |
 
-**有了 Agent Kit**：`bash create-agent.sh` → **5 分钟，生产可用。**
+**没有 Agent Kit**，从零搭建需要 2-4 周，踩完 [实战验证](docs/proven-patterns.md) 里记录的所有坑。
+
+**有了 Agent Kit**：一条命令，5 分钟，生产可用。
 
 ---
 

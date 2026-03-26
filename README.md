@@ -18,9 +18,9 @@ bash create-agent.sh
 
 ### Demo Video (2 min)
 
-https://github.com/anjiacm/agent-kit/raw/release/demo-video/out/demo-final.mp4
+[![Demo Video](docs/images/demo-cover.jpg)](https://github.com/anjiacm/agent-kit/releases/download/v1.0.0/demo-final.mp4)
 
-> Create → Launch → Team Spawn → Dashboard → Cross-Process Communication — full loop in 2 minutes
+> Click to watch: Create → Launch → Team Spawn → Dashboard → Cross-Process Communication — full loop in 2 minutes
 
 ---
 

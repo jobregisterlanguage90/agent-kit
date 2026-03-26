@@ -16,6 +16,12 @@ bash create-agent.sh
 
 ![Hero Banner](docs/images/hero-banner.png)
 
+### Demo Video (2 min)
+
+https://github.com/anjiacm/agent-kit/raw/release/demo-video/out/demo-final.mp4
+
+> Create → Launch → Team Spawn → Dashboard → Cross-Process Communication — full loop in 2 minutes
+
 ---
 
 ## What Agent Kit Actually Builds On Top of Claude Code

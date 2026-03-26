@@ -22,6 +22,10 @@ Thumbs.db
 # Plugins sensitive data
 plugins/feishu-auth/tokens.json
 
+# 隐私数据
+memory/private/
+!memory/private/.gitkeep
+
 # Node / Dashboard
 node_modules/
 web/node_modules/

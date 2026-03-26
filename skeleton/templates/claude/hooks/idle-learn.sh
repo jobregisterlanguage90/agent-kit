@@ -12,11 +12,13 @@ EVENT=$(echo "$INPUT" | jq -r '.hook_event_name')
 [ "$EVENT" != "TeammateIdle" ] && exit 0
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
+[ -f "$PROJECT_DIR/.env" ] && { set -a; source "$PROJECT_DIR/.env"; set +a; }
+DASH_PORT="${DASHBOARD_PORT:-7890}"
 QUEUE_FILE="$PROJECT_DIR/memory/knowledge/learning-queue.md"
 REFLECT_LOCK="/tmp/claude-worker-reflect-$(echo "$INPUT" | jq -r '.teammate_name // "unknown"' | tr -cd 'a-zA-Z0-9-').last"
 
 # 恢复 stale learning 状态（超过 24h 的 learning → pending）
-curl -sf -X POST http://localhost:7890/api/learning/recover > /dev/null 2>&1 || true
+curl -sf -X POST http://localhost:${DASH_PORT}/api/learning/recover > /dev/null 2>&1 || true
 
 PENDING=0
 [ -f "$QUEUE_FILE" ] && PENDING=$(grep -c '| pending |' "$QUEUE_FILE" 2>/dev/null || echo "0")
@@ -29,7 +31,7 @@ if [ "$PENDING" -gt 0 ]; then
 【工作反思 + 学习】
 1. 先反思：刚才的工作中有没有遇到不确定、回答不够好、或不知道最佳实践的地方？如果有，写入 memory/knowledge/learning-queue.md（格式：| P1/P2 | 课题 | 来源 | 今天日期 | pending |）。
 2. 再学习：有 ${PENDING} 个待学课题（优先: ${FIRST_TOPIC}）。
-   学习前必须先领取：curl -sf -X POST http://localhost:7890/api/learning/claim -H 'Content-Type: application/json' -d '{"topic":"课题名","worker_name":"你的名字"}'。
+   学习前必须先领取：curl -sf -X POST http://localhost:${DASH_PORT}/api/learning/claim -H 'Content-Type: application/json' -d '{"topic":"课题名","worker_name":"你的名字"}'。
    返回 success:true 才能学，false 则选下一个。学完后 curl POST /api/learning/release 释放。
    请调用 self-study Skill 执行学习。
 EOF

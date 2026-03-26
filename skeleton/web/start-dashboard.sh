@@ -1,8 +1,13 @@
 #!/bin/bash
 # 启动 Dashboard 服务器（如果未运行）
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PID_FILE="$SCRIPT_DIR/.dashboard.pid"
 LOG_FILE="$SCRIPT_DIR/dashboard.log"
+
+# 加载项目 .env（确保读到正确的 DASHBOARD_PORT）
+[ -f "$PROJECT_DIR/.env" ] && { set -a; source "$PROJECT_DIR/.env"; set +a; }
+
 PORT="${DASHBOARD_PORT:-7890}"
 
 # 检查是否已在运行

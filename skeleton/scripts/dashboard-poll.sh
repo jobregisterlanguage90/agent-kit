@@ -4,8 +4,13 @@
 # 守护模式（DAEMON_MODE=1）：跳过消息轮询（不消费队列），只维持心跳 + Worker 健康检查
 # 每 60 秒检查 Team Worker 心跳，缺失时注入 ping_worker 消息
 
-PROJECT_NAME=$(basename "${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}")
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+PROJECT_NAME=$(basename "$PROJECT_DIR")
 POLL_PID_FILE="/tmp/claude-${PROJECT_NAME}-dashboard-poll.pid"
+
+# 加载项目 .env（确保读到正确的 DASHBOARD_PORT）
+[ -f "$PROJECT_DIR/.env" ] && { set -a; source "$PROJECT_DIR/.env"; set +a; }
+
 DASHBOARD_PORT="${DASHBOARD_PORT:-7890}"
 BASE_URL="http://localhost:${DASHBOARD_PORT}"
 DAEMON_MODE="${DAEMON_MODE:-0}"

@@ -3,6 +3,7 @@
 # 用法: nohup bash plugins/example-monitor/daemon.sh [project_dir] &
 
 PROJECT_DIR="${1:-$(cd "$(dirname "$0")/../.." && pwd)}"
+[ -f "$PROJECT_DIR/.env" ] && { set -a; source "$PROJECT_DIR/.env"; set +a; }
 PROJECT_NAME=$(basename "$PROJECT_DIR")
 PLUGIN_NAME="example-monitor"
 PID_FILE="/tmp/claude-${PROJECT_NAME}-${PLUGIN_NAME}.pid"

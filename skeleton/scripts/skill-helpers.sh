@@ -2,6 +2,8 @@
 # Skill 执行辅助函数 — source 后使用
 # 用法: source scripts/skill-helpers.sh
 
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+[ -f "$PROJECT_DIR/.env" ] && { set -a; source "$PROJECT_DIR/.env"; set +a; }
 DASHBOARD_PORT="${DASHBOARD_PORT:-7890}"
 DASHBOARD_URL="http://localhost:${DASHBOARD_PORT}"
 

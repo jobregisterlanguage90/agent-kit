@@ -49,11 +49,16 @@ if [ -d "$PLUGINS_DIR" ]; then
   done
 fi
 
-cat << 'EOF'
+# 从 .env 读取端口（避免硬编码）
+DASH_PORT="${DASHBOARD_PORT:-7890}"
+[ -f "$CLAUDE_PROJECT_DIR/.env" ] && DASH_PORT=$(grep -E '^DASHBOARD_PORT=' "$CLAUDE_PROJECT_DIR/.env" | cut -d= -f2 | tr -d '"' | tr -d "'" || echo "$DASH_PORT")
+[ -z "$DASH_PORT" ] && DASH_PORT=7890
+
+cat << STARTUP_EOF
 {
   "hookSpecificOutput": {
     "hookEventName": "SessionStart",
-    "additionalContext": "【Agent 启动】请按 CLAUDE.md 启动序列自动执行，不要询问用户：\n1. 检查 Dashboard 服务: curl -sf http://localhost:7890/api/health，如未运行: bash web/start-dashboard.sh\n2. 打开浏览器: open http://localhost:7890\n3. 读取 entities.yaml → curl POST http://localhost:7890/api/server/init 初始化实体\n4. 读取 memory/*.md → curl POST /api/server/:alias/status 加载已知状态\n5. curl POST http://localhost:7890/api/claude/status -d '{\"status\":\"connected\"}'\n6. 创建 Team + spawn Workers — 参照 CLAUDE.md 中 Team 模式段落（TeamCreate + Task spawn）\n7. 启动后台轮询: bash scripts/dashboard-poll.sh（run_in_background, timeout 600000）\n8. Plugin 巡检 — curl -sf http://localhost:7890/api/cron/status 检查各 plugin daemon 状态\n9. 报告就绪：Dashboard + Team + 轮询均已启动\n\n【核心规则】Lead 只做轮询调度，所有任务分发给 Worker 执行。\n【轮询重启铁律】每次处理完 Dashboard 消息后，必须立即重新启动后台轮询，不重启 = Claude 变聋。\n【plugin_report 消息】收到 plugin_report 时：读取摘要 → 有异常则深入分析 → 如配置了通知则推送结果。"
+    "additionalContext": "【Agent 启动】请按 CLAUDE.md 启动序列自动执行，不要询问用户：\n1. 检查 Dashboard 服务: curl -sf http://localhost:${DASH_PORT}/api/health，如未运行: bash web/start-dashboard.sh\n2. 打开浏览器: open http://localhost:${DASH_PORT}\n3. 读取 entities.yaml → curl POST http://localhost:${DASH_PORT}/api/server/init 初始化实体\n4. 读取 memory/*.md → curl POST http://localhost:${DASH_PORT}/api/server/:alias/status 加载已知状态\n5. curl POST http://localhost:${DASH_PORT}/api/claude/status -d '{\"status\":\"connected\"}'\n6. 创建 Team + spawn Workers — 参照 CLAUDE.md 中 Team 模式段落（TeamCreate + Task spawn）\n7. 启动后台轮询: bash scripts/dashboard-poll.sh（run_in_background, timeout 600000）\n8. Plugin 巡检 — curl -sf http://localhost:${DASH_PORT}/api/cron/status 检查各 plugin daemon 状态\n9. 报告就绪：Dashboard + Team + 轮询均已启动\n\n【核心规则】Lead 只做轮询调度，所有任务分发给 Worker 执行。\n【轮询重启铁律】每次处理完 Dashboard 消息后，必须立即重新启动后台轮询，不重启 = Claude 变聋。\n【plugin_report 消息】收到 plugin_report 时：读取摘要 → 有异常则深入分析 → 如配置了通知则推送结果。"
   }
 }
-EOF
+STARTUP_EOF

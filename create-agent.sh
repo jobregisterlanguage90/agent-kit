@@ -34,6 +34,13 @@ CONNECT_VIA="${CONNECT_VIA:-ssh}"
 read -p "Dashboard 端口 [7890]: " DASHBOARD_PORT
 DASHBOARD_PORT="${DASHBOARD_PORT:-7890}"
 
+# 检测端口冲突
+while lsof -ti:"$DASHBOARD_PORT" >/dev/null 2>&1; do
+  echo "  ⚠️  端口 $DASHBOARD_PORT 已被占用"
+  read -p "请选择其他端口: " DASHBOARD_PORT
+  DASHBOARD_PORT="${DASHBOARD_PORT:-7890}"
+done
+
 read -p "Team Worker 数量 [4]: " TEAM_SIZE
 TEAM_SIZE="${TEAM_SIZE:-4}"
 
@@ -170,18 +177,17 @@ else
   echo "  Git 仓库已存在"
 fi
 
+# === 运行首次安装 ===
+echo ""
+echo "=== 运行首次安装 ==="
+cd "$TARGET_DIR"
+bash setup.sh
+
 echo ""
 echo "╔══════════════════════════════════════╗"
-echo "║          项目创建完成!                ║"
+echo "║          ✅ 项目已就绪！              ║"
 echo "╚══════════════════════════════════════╝"
 echo ""
-echo "下一步:"
-echo "  1. cd $TARGET_DIR"
-echo "  2. 编辑 entities.yaml — 添加你的实体"
-echo "  3. 创建 .env — 参考 .env.example"
-echo "  4. bash setup.sh — 安装 hooks 和 skills"
-echo "  5. 在 skills/ 下创建你的技能"
-echo "  6. 在 plugins/ 下创建你的插件"
-echo "  7. 启动 Claude Code — 自动进入工作模式"
-echo ""
-echo "Dashboard UI 将在首次启动时自动打开: http://localhost:$DASHBOARD_PORT"
+echo "启动："
+echo "  cd $TARGET_DIR && claude"
+echo "  说 '启动' 即可开始工作"

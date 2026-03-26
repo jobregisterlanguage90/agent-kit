@@ -4,6 +4,7 @@
 # 2. 非空输入时检测"新概念信号"，提醒调用 intent-check
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
+[ -f "$PROJECT_DIR/.env" ] && { set -a; source "$PROJECT_DIR/.env"; set +a; }
 INPUT=$(cat)
 USER_INPUT=$(echo "$INPUT" | jq -r '.userInput // empty' | xargs)
 

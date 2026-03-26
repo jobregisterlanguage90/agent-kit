@@ -170,14 +170,23 @@ Full recovery in seconds. Zero task loss.
 
 ## Prerequisites
 
-**Only one dependency: [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)**
+### Environment Requirements
+
+| Software | Version | Required | Notes |
+|----------|---------|:--------:|-------|
+| Claude Code | Latest | ✅ | `npm install -g @anthropic-ai/claude-code` |
+| Node.js | 18+ | ✅ | Dashboard server dependency |
+| npm | - | ✅ | Comes with Node.js |
+| jq | - | Recommended | JSON processing, some scripts depend on it |
+| iTerm2 | - | macOS recommended | Worker panel display (Claude Code Team mode) |
+| tmux | - | Linux required | Worker panel display (Claude Code Team mode) |
+
+> **Team Mode Note**: Claude Code's TeamCreate automatically creates terminal panels for each Worker. On macOS, iTerm2 is preferred (native split pane support). On Linux, tmux must be pre-installed. Default Terminal.app works but provides a suboptimal experience.
 
 ```bash
 # Install Claude Code (if you haven't already)
 npm install -g @anthropic-ai/claude-code
 ```
-
-That's it. Node.js and npm are needed for the Dashboard server, but Claude Code itself handles everything else.
 
 ## Quick Start
 

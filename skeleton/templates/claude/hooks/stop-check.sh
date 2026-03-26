@@ -11,6 +11,7 @@ if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
 fi
 
 PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+[ -f "$PROJECT_DIR/.env" ] && { set -a; source "$PROJECT_DIR/.env"; set +a; }
 PROJECT_NAME=$(basename "$PROJECT_DIR")
 POLL_PID_FILE="/tmp/claude-${PROJECT_NAME}-dashboard-poll.pid"
 DASHBOARD_PORT="${DASHBOARD_PORT:-7890}"

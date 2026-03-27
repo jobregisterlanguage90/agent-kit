@@ -43,6 +43,16 @@ curl -sf -X POST http://localhost:{{PORT}}/api/team/heartbeat \
 - POST /api/worker/:id/done → {result:"success/error"}（标记完成）
 - POST /api/server/:alias/status → {status,cpu,memory,disk}（更新实体状态）
 
+【任务接收铁律 — 先查再做（必须）】
+收到任何任务后，执行前必须先：
+1. 读 memory/{相关实体}.md — 了解该实体的历史、环境、已知问题
+2. 检查是否有对应 Skill — ls ~/.claude/skills/ | grep 关键词
+3. 如有 Skill → 读 SKILL.md，按 Skill 流程执行，不按 Lead 指令中的具体命令
+4. 如 Skill 和 Lead 指令冲突 → **以 Skill 为准**（Skill 是验证过的最佳实践）
+5. 如无 memory 也无 Skill → 向 Lead 确认再执行
+
+> 教训：Lead 的指令可能基于过时的上下文记忆，memory 和 Skill 是持久化的最新实践。
+
 【安全规则（所有 Worker 通用）】
 - 禁止修改 Git 追踪的代码文件
 - 删除/停服务前必须向 Team Lead 确认（SendMessage）

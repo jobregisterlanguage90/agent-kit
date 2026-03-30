@@ -16,11 +16,18 @@ import json
 import logging
 import re
 import subprocess
+import time
 import requests
+
+# ─── 消息去重（防止 WebSocket 重连时重复投递）───
+_seen_messages: dict[str, float] = {}  # message_id → timestamp
+_DEDUP_TTL = 60  # 60秒内同一 message_id 只处理一次
 
 # 加载 .env（start.sh 已预加载，这里是备用）
 _script_dir = os.path.dirname(os.path.abspath(__file__))
-_project_dir = os.path.dirname(os.path.dirname(_script_dir))  # plugins/feishu-notify → project root
+_project_dir = os.path.dirname(
+    os.path.dirname(_script_dir)
+)  # plugins/feishu-notify → project root
 _env_file = os.path.join(_project_dir, ".env")
 if os.path.exists(_env_file):
     with open(_env_file) as f:
@@ -50,6 +57,7 @@ log = logging.getLogger(__name__)
 # ── 实体别名列表（从 entities.yaml 动态读取）──────────────────────────────
 KNOWN_ALIASES = []
 
+
 def _load_aliases():
     """从 entities.yaml 加载实体别名"""
     global KNOWN_ALIASES
@@ -58,6 +66,7 @@ def _load_aliases():
         return
     try:
         import yaml
+
         with open(entities_file) as f:
             config = yaml.safe_load(f)
         if config and "entities" in config:
@@ -69,11 +78,12 @@ def _load_aliases():
         # 无 PyYAML，尝试简单解析
         with open(entities_file) as f:
             for line in f:
-                m = re.match(r'\s*-?\s*alias:\s*(.+)', line)
+                m = re.match(r"\s*-?\s*alias:\s*(.+)", line)
                 if m:
                     KNOWN_ALIASES.append(m.group(1).strip().strip('"').strip("'"))
     except Exception as e:
         log.warning("加载 entities.yaml 失败: %s", e)
+
 
 _load_aliases()
 
@@ -86,8 +96,10 @@ def feishu_reply(message_id: str, text: str) -> None:
     try:
         result = subprocess.run(
             ["bash", _reply_script, message_id, text],
-            capture_output=True, text=True, timeout=10,
-            cwd=_project_dir
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=_project_dir,
         )
         if result.returncode == 0:
             log.info("离线自动回复成功: %s", message_id)
@@ -141,9 +153,15 @@ def map_to_dashboard(text: str, sender_id: str) -> dict:
         if re.search(r"(日志|log)", t):
             return {"type": "server_action", "server": alias, "action": "logs"}
         if re.search(r"(部署|deploy|发布)", t):
-            instructions = re.sub(r"部署|deploy|发布|\s*" + alias, "", text, flags=re.I).strip()
-            return {"type": "server_action", "server": alias, "action": "deploy",
-                    "instructions": instructions or "按默认流程部署"}
+            instructions = re.sub(
+                r"部署|deploy|发布|\s*" + alias, "", text, flags=re.I
+            ).strip()
+            return {
+                "type": "server_action",
+                "server": alias,
+                "action": "deploy",
+                "instructions": instructions or "按默认流程部署",
+            }
         # 默认：检查
         return {"type": "server_action", "server": alias, "action": "check"}
 
@@ -151,11 +169,29 @@ def map_to_dashboard(text: str, sender_id: str) -> dict:
     return {"type": "feishu_text", "text": text}
 
 
+def _dedup_check(message_id: str) -> bool:
+    """检查消息是否重复，返回 True 表示重复应跳过"""
+    now = time.time()
+    # 清理过期条目
+    expired = [k for k, v in _seen_messages.items() if now - v >= _DEDUP_TTL]
+    for k in expired:
+        del _seen_messages[k]
+    if message_id in _seen_messages:
+        return True
+    _seen_messages[message_id] = now
+    return False
+
+
 def on_message(data: P2ImMessageReceiveV1) -> None:
     """飞书消息事件处理器"""
     try:
         msg = data.event.message
         sender = data.event.sender
+
+        # 消息去重：防止 WebSocket 重连时重复投递
+        if _dedup_check(msg.message_id):
+            log.info("重复消息，跳过: %s", msg.message_id)
+            return
 
         text = extract_text(msg)
         if not text:
@@ -187,14 +223,19 @@ def on_message(data: P2ImMessageReceiveV1) -> None:
 
         # Dashboard 不可达 → 整个系统未启动，通知用户
         if not dashboard_ok:
-            feishu_reply(msg.message_id, "⚠️ Agent 系统当前未启动，消息无法入队。请打开 Claude Code 项目后重新发送。")
+            feishu_reply(
+                msg.message_id,
+                "⚠️ Agent 系统当前未启动，消息无法入队。请打开 Claude Code 项目后重新发送。",
+            )
             return
 
         # Dashboard 可达但 Claude 未连接 → 消息已入队，发送等待提示
         claude_status = check_claude_online()
         if claude_status not in ("connected", "working", "idle"):
             log.info("消息已入队，Claude 当前状态: %s", claude_status)
-            feishu_reply(msg.message_id, "📥 消息已记录，Claude 当前不在线，上线后会自动处理。")
+            feishu_reply(
+                msg.message_id, "📥 消息已记录，Claude 当前不在线，上线后会自动处理。"
+            )
 
     except Exception as e:
         log.error("消息处理失败: %s", e, exc_info=True)
